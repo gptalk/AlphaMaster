@@ -5,10 +5,9 @@ import threading
 
 from web.data_sources.base import DataSource
 
-# 前端下拉可见的数据源（国内期货默认隐藏，如需启用加回列表即可）
+# 前端下拉可见的数据源（TDX 切换：MT5/TradingView 已下线，仅通达信）
 SOURCE_KINDS: tuple[tuple[str, str], ...] = (
-    ("mt5", "MT5"),
-    ("tradingview", "TradingView"),
+    ("tongdaxin", "通达信 (TQ)"),
 )
 
 _INSTANCES: dict[str, DataSource] = {}
@@ -16,21 +15,9 @@ _LOCK = threading.Lock()
 
 
 def _build(kind: str) -> DataSource:
-    if kind == "mt5":
-        from web.data_sources.mt5_source import MT5Source
-        return MT5Source()
-    if kind == "tradingview":
-        from web.data_sources.tradingview_source import TradingViewSource
-        return TradingViewSource()
-    if kind == "okx":
-        from web.data_sources.okx_source import OKXSource
-        return OKXSource()
     if kind == "tongdaxin":
         from web.data_sources.tongdaxin_source import TongdaxinSource
         return TongdaxinSource()
-    if kind == "domestic_futures":
-        from web.data_sources.domestic_futures_source import DomesticFuturesSource
-        return DomesticFuturesSource()
     raise ValueError(f"未知数据源: {kind}")
 
 
