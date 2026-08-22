@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 from model_core.vm import StackVM
-from strategy_manager.signal import target_to_direction
+from model_core.signal import target_to_direction
 
 _H1_PERIODS_PER_YEAR = 6240
 
