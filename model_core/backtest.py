@@ -21,7 +21,7 @@ import math
 import torch
 from torch import Tensor
 
-from strategy_manager.signal import compute_target_positions_stateless
+from .signal import compute_target_positions_stateless
 from .config import ModelConfig
 
 _H1_PERIODS_PER_YEAR = 6240

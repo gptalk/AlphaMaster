@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.parquet_manager import inspect_parquet_file
+from data_pipeline.parquet_store import inspect_parquet_file
 from model_core.vocab import VOCAB_VERSION
 from web.progress import (
     STRATEGIES_DIR,

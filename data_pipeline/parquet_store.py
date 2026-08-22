@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 from pathlib import Path
+from typing import Any
+import re
 import pandas as pd
 
 
@@ -62,3 +64,75 @@ class ParquetStore:
             raise SchemaError(f"missing columns: {missing}; required {cls.SCHEMA}")
         if not pd.api.types.is_datetime64_any_dtype(df["time"]):
             raise SchemaError(f"column 'time' must be datetime64, got {df['time'].dtype}")
+
+
+# ── 文件名解析 + 检测工具 ─────────────────────────────────────────────────────
+
+_FILENAME_RE = re.compile(r"^(?P<code>.+)_(?P<period>[^_]+)$")
+
+
+def parse_parquet_filename(path: Path | str) -> tuple[str, str]:
+    """从 {code}_{period}.parquet 文件名解析 code + period。
+
+    Returns:
+        (code, period) 例如 ('600519.SH', '1d')
+
+    Raises:
+        ValueError: 文件名格式不符合约定
+    """
+    p = Path(path)
+    stem = p.stem
+    m = _FILENAME_RE.match(stem)
+    if not m:
+        raise ValueError(f"文件名格式错误: {stem!r}（期望 {{code}}_{{period}}）")
+    return m.group("code"), m.group("period")
+
+
+def inspect_parquet_file(path: Path | str) -> dict[str, Any]:
+    """检查 parquet 文件，返回 metadata 字典给 Web UI。
+
+    Returns:
+        dict with keys: path, symbol, timeframe, bars, years, first_time, last_time
+
+    Raises:
+        FileNotFoundError, ValueError
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"文件不存在: {p}")
+    if p.suffix.lower() != ".parquet":
+        raise ValueError("请选择 .parquet 文件")
+
+    symbol, period = parse_parquet_filename(p)
+    df = pd.read_parquet(p)
+    bars = len(df)
+    try:
+        from config import Config
+        min_bars = Config.MIN_BARS
+    except Exception:
+        min_bars = 300
+    if bars < min_bars:
+        raise ValueError(f"数据不足: {bars} bars（至少需要 {min_bars}）")
+
+    years: float | None = None
+    first_time = last_time = None
+    if "time" in df.columns and len(df) > 1:
+        try:
+            t_min = pd.to_datetime(df["time"].min())
+            t_max = pd.to_datetime(df["time"].max())
+            first_time = str(t_min)
+            last_time = str(t_max)
+            if t_max > t_min:
+                years = round((t_max - t_min).total_seconds() / (365.25 * 24 * 3600), 2)
+        except Exception:
+            pass
+
+    return {
+        "path": str(p.resolve()),
+        "symbol": symbol,
+        "timeframe": period,
+        "bars": bars,
+        "years": years,
+        "first_time": first_time,
+        "last_time": last_time,
+    }
