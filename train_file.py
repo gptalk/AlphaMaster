@@ -38,7 +38,7 @@ def train_from_file(data_file: str, *, from_scratch: bool = False) -> AlphaEngin
     print(f"{'='*60}")
     print(f"  品种: {symbol}")
     print(f"  周期: {timeframe}")
-    print(f"  数据: 强制离线 Parquet（不连接 MT5）")
+    print(f"  数据: 强制离线 Parquet（不连接 TQ）")
     print(f"  文件: {Path(data_file).resolve()}")
     print(f"  训练步数: {ModelConfig.TRAIN_STEPS}")
     print(f"  K线数: {info['bars']}")
