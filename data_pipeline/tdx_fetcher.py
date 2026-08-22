@@ -93,11 +93,47 @@ class TdxDataFetcher:
         )
 
     @staticmethod
-    def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-        """TQ 返回列名 Open/High/...，统一小写化 + 标准化 time 列。
-        保留 code 列（长表格式 TQ 会带 code）。"""
-        if df is None or df.empty:
+    def _normalize_columns(df) -> pd.DataFrame:
+        """统一 TQ 返回格式为 DataFrame[time, code, open, high, low, close, volume, amount]。
+
+        TdxW.exe (tqcenter) 实际返回三种格式之一：
+          A) dict[field_name, DataFrame] —— 批量，每只 code 是独立列
+             例如 {Open: df[code], High: df[code], ...}
+          B) DataFrame（单只直接返回，列 = field）
+          C) dict[code, DataFrame]（理论上的另一种组织）
+        """
+        if df is None:
             return pd.DataFrame(columns=["time", "code", "open", "high", "low", "close", "volume", "amount"])
+
+        # 格式 A：dict[field, DataFrame[code]] —— TdxW.exe 实际返回
+        if isinstance(df, dict) and df and all(
+            isinstance(v, pd.DataFrame) for v in df.values()
+        ):
+            return TdxDataFetcher._from_field_dict(df)
+
+        # 格式 C：dict[code, DataFrame]
+        if isinstance(df, dict):
+            pieces = []
+            for code, sub in df.items():
+                if isinstance(sub, pd.DataFrame):
+                    sub = sub.copy()
+                    sub["code"] = code
+                    pieces.append(sub)
+                elif isinstance(sub, dict):
+                    sub_df = pd.DataFrame(sub)
+                    sub_df["code"] = code
+                    pieces.append(sub_df)
+            if not pieces:
+                return pd.DataFrame(columns=["time", "code", "open", "high", "low", "close", "volume", "amount"])
+            df = pd.concat(pieces, ignore_index=True)
+
+        # 格式 B：DataFrame
+        try:
+            if len(df) == 0:
+                return pd.DataFrame(columns=["time", "code", "open", "high", "low", "close", "volume", "amount"])
+        except TypeError:
+            return pd.DataFrame(columns=["time", "code", "open", "high", "low", "close", "volume", "amount"])
+
         rename = {v: k for k, v in _TQ_FIELD_MAP.items()}
         df = df.rename(columns=rename)
         if "time" not in df.columns:
@@ -107,10 +143,56 @@ class TdxDataFetcher:
         df["time"] = pd.to_datetime(df["time"])
         std_cols = ["time", "open", "high", "low", "close", "volume", "amount"]
         keep = [c for c in std_cols if c in df.columns]
-        # code 列若存在则保留在 time 之后
         if "code" in df.columns:
             keep.insert(1, "code")
         return df[keep]
+
+    @staticmethod
+    def _from_field_dict(field_dict: dict) -> pd.DataFrame:
+        """格式 A：{field_name: DataFrame[code]} → 长表 DataFrame。
+
+        TdxW.exe 实际返回：
+          {
+            "Open":   DataFrame(cols=[code1, code2, ...], index=dates),
+            "High":   ...,
+            "Close":  ...,
+            "Volume": ...,
+            "Amount": ...,
+          }
+        每个 field 的 df：列名=code（多只），列值=该 field 的价格/量。索引=日期。
+        """
+        first_field_df = next(iter(field_dict.values()))
+        if first_field_df is None or len(first_field_df) == 0:
+            return pd.DataFrame(columns=["time", "code", "open", "high", "low", "close", "volume", "amount"])
+
+        codes = list(first_field_df.columns)
+        dates = first_field_df.index
+
+        # 长表骨架：(time, code) 对每只 code 重复一次
+        skeleton_rows = []
+        for code in codes:
+            for d in dates:
+                skeleton_rows.append((pd.Timestamp(d), code))
+        long_df = pd.DataFrame(skeleton_rows, columns=["time", "code"])
+
+        # 合并每个 field
+        field_rename = {v: k for k, v in _TQ_FIELD_MAP.items()}
+        for field_name, field_df in field_dict.items():
+            if field_df is None or len(field_df) == 0:
+                continue
+            target_col = field_rename.get(field_name, field_name.lower())
+            if target_col in long_df.columns:
+                continue
+            # field_df 的每一列是一只 code；构造 (time, code) → value 的映射
+            stack = field_df.stack().reset_index()  # cols: [date, code, value]
+            stack.columns = ["time", "code", target_col]
+            stack["time"] = pd.to_datetime(stack["time"])
+            long_df = long_df.merge(stack, on=["time", "code"], how="left")
+
+        std_cols = ["open", "high", "low", "close", "volume", "amount"]
+        keep = ["time", "code"] + [c for c in std_cols if c in long_df.columns]
+        long_df["time"] = pd.to_datetime(long_df["time"])
+        return long_df[keep]
 
     def fetch_ohlcv(self, code: str, start: str, end: str,
                     period: str = DEFAULT_PERIOD,

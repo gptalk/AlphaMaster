@@ -41,6 +41,9 @@ def collect_codes(what: str) -> list[str]:
         return list(Universe.MAIN_INDICES)
     if what in ("universe", "hs300"):
         return list(Universe.cs_universe())
+    # 支持逗号分隔多只 code：--what 600519.SH,000001.SZ
+    if "," in what:
+        return [c.strip() for c in what.split(",") if c.strip()]
     return [what]
 
 

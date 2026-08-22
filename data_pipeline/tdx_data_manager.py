@@ -54,6 +54,9 @@ class TdxDataManager:
         for code, df in result.items():
             if code == "_failed":
                 continue
+            # 落盘前去掉 code 列（schema 约定不包含；code 在文件名中已编码）
+            if "code" in df.columns:
+                df = df.drop(columns=["code"])
             self.store.save(code, df, period=period)
             status[code] = "fetched"
         for code, _reason in result.get("_failed", []):
