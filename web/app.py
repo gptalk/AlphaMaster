@@ -47,7 +47,10 @@ from web.training_manager import training_manager
 from web.training_time import get_training_time_summary
 from web.training_package import build_training_export_zip, import_training_package
 from web.backtest_manager import backtest_manager
-from web.realtime_manager import realtime_manager
+try:
+    from web.realtime_manager import realtime_manager
+except ImportError:
+    realtime_manager = None  # 实时分析已下线（TDX 切换：仅训练/回测）
 from web.data_sources.factory import list_sources
 from strategy_manager.live_signal import min_exposure
 
@@ -980,6 +983,8 @@ def api_backtest_chart(name: str):
 
 @app.on_event("startup")
 def _startup_realtime() -> None:
+    if realtime_manager is None:
+        return
     try:
         realtime_manager.load_persisted()
     except Exception as exc:  # noqa: BLE001
@@ -988,34 +993,22 @@ def _startup_realtime() -> None:
 
 @app.get("/api/realtime/sources")
 def api_realtime_sources() -> dict[str, Any]:
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     return {"sources": list_sources(), "min_exposure": min_exposure()}
 
 
 @app.post("/api/realtime/tradingview/probe")
 def api_realtime_tradingview_probe() -> dict[str, Any]:
-    """Probe TradingView reachability (same behavior as PA_Agent before fetch)."""
-    from web.data_sources.tradingview_connectivity import (
-        TV_CLOUD_SERVER_WIKI_URL,
-        TV_CONNECTIVITY_MESSAGE,
-        check_tradingview_connectivity,
-    )
-
-    ok, detail = check_tradingview_connectivity(
-        timeout_s=15.0, max_attempts=2, retry_delay_s=2.0
-    )
-    return {
-        "ok": ok,
-        "detail": detail,
-        "blocked": not ok,
-        "title": "无法使用 TradingView",
-        "message": None if ok else TV_CONNECTIVITY_MESSAGE,
-        "wiki_url": TV_CLOUD_SERVER_WIKI_URL,
-    }
+    """TDX 切换：TradingView 探测已下线。"""
+    raise HTTPException(503, "实时分析已下线（仅训练/回测）")
 
 
 @app.get("/api/realtime/strategies")
 def api_realtime_strategies() -> dict[str, Any]:
     """已保存的 best_*.json 策略，供因子来源下拉。"""
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     rows = []
     for s in list_strategies():
         sym = s.get("symbol")
@@ -1038,11 +1031,15 @@ def api_realtime_strategies() -> dict[str, Any]:
 
 @app.get("/api/realtime/status")
 def api_realtime_status() -> dict[str, Any]:
+    if realtime_manager is None:
+        return {"running": False, "available": False, "reason": "实时分析已下线（TDX 切换）"}
     return realtime_manager.status()
 
 
 @app.post("/api/realtime/watch")
 def api_realtime_watch(req: AddWatchRequest) -> dict[str, Any]:
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     try:
         watch = realtime_manager.add_watch(
             req.source, req.symbol, req.timeframe, req.strategy_file
@@ -1054,18 +1051,24 @@ def api_realtime_watch(req: AddWatchRequest) -> dict[str, Any]:
 
 @app.post("/api/realtime/unwatch")
 def api_realtime_unwatch(req: RemoveWatchRequest) -> dict[str, Any]:
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     removed = realtime_manager.remove_watch(req.id)
     return {"ok": removed}
 
 
 @app.post("/api/realtime/start")
 def api_realtime_start() -> dict[str, Any]:
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     realtime_manager.start()
     return {"ok": True, **realtime_manager.status()}
 
 
 @app.post("/api/realtime/stop")
 def api_realtime_stop() -> dict[str, Any]:
+    if realtime_manager is None:
+        raise HTTPException(503, "实时分析已下线（仅训练/回测）")
     realtime_manager.stop()
     return {"ok": True, "running": False}
 
