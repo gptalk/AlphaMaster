@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data_pipeline.parquet_manager import inspect_parquet_file
+from data_pipeline.parquet_store import inspect_parquet_file
 from model_core.config import ModelConfig
 from web.file_dialog import pick_parquet_file, pick_strategy_file
 from web.progress import (
@@ -52,7 +52,12 @@ try:
 except ImportError:
     realtime_manager = None  # 实时分析已下线（TDX 切换：仅训练/回测）
 from web.data_sources.factory import list_sources
-from strategy_manager.live_signal import min_exposure
+try:
+    from strategy_manager.live_signal import min_exposure
+except ImportError:
+    # 实时分析已下线；min_exposure 仅给 /api/realtime/sources 用，后者也已 503
+    def min_exposure() -> float:
+        return 0.05
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 BACKTEST_OUTPUT_DIR = ROOT / "backtest_output"

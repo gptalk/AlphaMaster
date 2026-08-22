@@ -78,7 +78,7 @@ def _fallback_data_file_for_symbol(symbol: str) -> tuple[str | None, str | None]
     if not p.exists():
         return None, None
     try:
-        from data_pipeline.parquet_manager import inspect_parquet_file
+        from data_pipeline.parquet_store import inspect_parquet_file
 
         info = inspect_parquet_file(str(p.resolve()))
     except Exception:
