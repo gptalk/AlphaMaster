@@ -128,15 +128,14 @@ class MT5Backtest:
         cost_rate:        float | None = None,
         periods_per_year: int   = _H1_PERIODS_PER_YEAR,
     ):
-        # P1-7 修复：cost_rate 单一来源为 Config.COST_RATE，避免训练/回测/实盘
-        # 三处分别硬编码导致不一致（原默认 0.0001 与生产 0.0003 偏差 3x，
-        # 造成 gate 误判高 Sharpe 因子）。None 时读 Config.COST_RATE。
+        # P1-7 修复：cost_rate 单一来源为 Config.COST_RATE。
+        # TDX 切换：兜底改为 A 股值（印花税单边 0.05% + 佣金 0.025% + 滑点 0.01% ≈ 0.17% 双边）。
         if cost_rate is None:
             try:
                 from config import Config
                 cost_rate = float(Config.COST_RATE)
             except Exception:
-                cost_rate = 0.0003  # 兜底：与生产 run_backtest.py 一致
+                cost_rate = 0.0017  # 兜底：A 股双边成本
         self.cost_rate        = cost_rate
         self.periods_per_year = periods_per_year
 
