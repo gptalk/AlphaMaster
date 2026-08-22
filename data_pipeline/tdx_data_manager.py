@@ -62,11 +62,16 @@ class TdxDataManager:
 
     def build_training_matrix(self, code: str, start: str, end: str,
                               period: str = "1d"
-                              ) -> tuple[torch.Tensor, pd.DataFrame]:
+                              ) -> tuple[dict[str, torch.Tensor], pd.DataFrame]:
+        """返回 ({field: Tensor[N=1, T]}, df) 给 MT5FeatureEngineer.compute_features。
+
+        返回的 dict 字段：open / high / low / close / volume / amount。
+        """
         df = self.get_or_fetch(code, start, end, period=period)
-        ohlcv = df[["open", "high", "low", "close", "volume"]].to_numpy(dtype="float32")
-        tensor = torch.from_numpy(ohlcv).unsqueeze(0)
-        return tensor, df
+        raw_dict: dict[str, torch.Tensor] = {}
+        for col in ["open", "high", "low", "close", "volume", "amount"]:
+            raw_dict[col] = torch.from_numpy(df[col].to_numpy(dtype="float32")).unsqueeze(0)
+        return raw_dict, df
 
     def close(self) -> None:
         self.fetcher.close()

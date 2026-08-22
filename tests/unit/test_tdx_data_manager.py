@@ -51,9 +51,10 @@ def test_bulk_ensure_cached_returns_status(store, fetcher):
     assert status["000001.SZ"] == "failed"
 
 
-def test_build_training_matrix_returns_tensor(store, fetcher):
+def test_build_training_matrix_returns_raw_dict(store, fetcher):
     fetcher.fetch_ohlcv.return_value = _fake_ohlcv()
     mgr = TdxDataManager(store=store, fetcher=fetcher)
-    tensor, df = mgr.build_training_matrix("600519.SH", "20240101", "20240131")
-    assert tensor.shape == (1, 3, 5)
+    raw_dict, df = mgr.build_training_matrix("600519.SH", "20240101", "20240131")
+    assert set(raw_dict.keys()) >= {"open", "high", "low", "close", "volume", "amount"}
+    assert raw_dict["close"].shape == (1, 3)
     assert isinstance(df, pd.DataFrame)
