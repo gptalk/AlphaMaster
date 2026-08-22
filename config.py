@@ -42,6 +42,7 @@ class Config:
     BATCH_SIZE = 128
     TRAIN_STEPS = 300
     MAX_FORMULA_LEN = 8
+    DEVICE = "cpu"
 
     # ── A 股成本参数 ──
     # 印花税单边 0.05% + 佣金双边 0.025% + 滑点双边 0.01% ≈ 单边 0.085%
@@ -50,8 +51,24 @@ class Config:
     MIN_TRADE_EXPOSURE = 0.05
     MAX_OPEN_POSITIONS = 4
 
+    # ── 数据质量门槛 ──
+    MIN_BARS = 300
+
     # ── 仓位与信号 ──
     SIGNAL_MODE = "backtest_parity"
     EXIT_MODE = "signal"
     REBALANCE_ON_BAR_CLOSE = True
     EXECUTION_LAG_BARS = 1
+
+    # ── 兼容原版字段（MT5 时代遗留，TDX 切换后语义变化）──
+    # SYMBOLS：原 MT5 forex/metals/index 列表，TDX 改为 30 只 A 股 anchor
+    SYMBOLS = list(Universe.ANCHOR_STOCKS)
+    # TIMEFRAME：原 mt5.TIMEFRAME_H1=16385 整数；TDX 改为字符串 "1d"
+    TIMEFRAME = "1d"
+    # BARS_COUNT：原 MT5 历史最大拉取数；TDX 改为默认日期范围
+    BARS_COUNT = 10_000_000
+    # REWARD_MODE：奖励计算模式（TDX 默认连续仓位评分）
+    REWARD_MODE = "continuous"
+
+    # ── K 线缓存目录（兼容原版 data_pipeline.parquet_manager 字段）──
+    KLINE_CACHE_DIR = os.getenv("PARQUET_ROOT", r"D:\K线数据")

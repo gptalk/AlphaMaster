@@ -129,6 +129,8 @@ def inspect_parquet_file(path: Path | str) -> dict[str, Any]:
 
     return {
         "path": str(p.resolve()),
+        "data_file": str(p.resolve()),  # 别名：兼容 web/app.py 旧字段
+        "filename": p.name,             # 别名：兼容 train_file.py 旧字段
         "symbol": symbol,
         "timeframe": period,
         "bars": bars,

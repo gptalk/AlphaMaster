@@ -197,8 +197,19 @@ class ParquetDataManager:
             field: torch.tensor(np.array([rows[field]]), dtype=torch.float32)
             for field in ["open", "high", "low", "close", "volume"]
         }
+        # time 列：原版约定 Unix 秒（int64）
+        # TDX 拉的数据是 datetime64[ns]，先转 ns 再除 1e9 得秒
+        time_values = sub["time"].values
+        if hasattr(time_values, "astype"):
+            time_ns = time_values.astype("int64")
+            if time_ns.max() > 10_000_000_000:  # 实际是 ns（>10^12 = 2001+）
+                time_seconds = time_ns // 1_000_000_000
+            else:
+                time_seconds = time_ns  # 已经是秒
+        else:
+            time_seconds = time_values
         raw["time"] = torch.tensor(
-            np.array([sub["time"].values.astype("int64")]),
+            np.array([time_seconds]),
             dtype=torch.int64,
         )
 
