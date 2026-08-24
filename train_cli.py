@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -271,3 +272,210 @@ def run_training_subprocess(
             stderr=subprocess.STDOUT,
         )
     return int(result.returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Side-effect helpers — isolated so main() can be tested with monkeypatch
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _train_steps() -> int:
+    return int(ModelConfig.TRAIN_STEPS)
+
+
+def _read_history(symbol: str) -> dict[str, Any]:
+    """Read training_history_{symbol}.json. Returns {} if missing or invalid."""
+    path = PROJECT_ROOT / f"training_history_{symbol}.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _current_step_from_history(symbol: str) -> int | None:
+    hist = _read_history(symbol)
+    steps = hist.get("step") or []
+    if steps:
+        try:
+            return int(steps[-1]) + 1
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _read_strategy(symbol: str) -> dict[str, Any]:
+    """Read strategies/best_{symbol}.json. Returns {} if missing or invalid."""
+    path = PROJECT_ROOT / "strategies" / f"best_{symbol}.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _record_session(*, symbol: str, started_at: datetime, finished_at: datetime, log_path: str) -> None:
+    record_training_session(
+        symbol=symbol,
+        started_at=started_at.isoformat(),
+        finished_at=finished_at.isoformat(),
+        log_path=log_path,
+    )
+
+
+def _get_time_summary(symbol: str, **_kw: Any):
+    return get_training_time_summary(symbol)
+
+
+def _history_session_count(symbol: str) -> int:
+    """Count sessions recorded in training_time_{safe}.json."""
+    safe = safe_symbol_tag(symbol)
+    path = PROJECT_ROOT / f"training_time_{safe}.json"
+    if not path.exists():
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        sessions = data.get("sessions") or []
+        return len(sessions) if isinstance(sessions, list) else 0
+    except (json.JSONDecodeError, OSError):
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Orchestrator
+# ─────────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point. Exits with 0 (success), 1 (training failed), or 2 (bad args)."""
+    args = parse_args(argv)
+    symbol = args.symbol
+    timeframe = args.timeframe
+    data_dir = resolve_data_dir(args)
+    parquet_name = build_parquet_filename(symbol, timeframe)
+    parquet_path = Path(data_dir) / parquet_name
+
+    # ── Inspect parquet (validates existence + format) ──
+    try:
+        info = inspect_parquet_file(parquet_path)
+    except FileNotFoundError as e:
+        print(f"[错误] 数据文件不存在: {parquet_path.resolve()}", file=sys.stderr)
+        print(f"        请确认 {data_dir}/{parquet_name} 存在，或通过 --data-dir 指定", file=sys.stderr)
+        sys.exit(2)
+    except ValueError as e:
+        print(f"[错误] 数据文件无效: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    target_steps = _train_steps()
+
+    # ── Startup banner ──
+    print_startup_banner(
+        symbol=symbol,
+        info=info,
+        target_steps=target_steps,
+        from_scratch=args.from_scratch,
+        file=sys.stdout,
+    )
+
+    # ── Build subprocess command ──
+    started_at = _now_utc()
+    safe_sym = safe_symbol_tag(symbol)
+    started_ts = started_at.strftime("%Y%m%d_%H%M%S")
+    log_path = PROJECT_ROOT / "logs" / f"train_{safe_sym}_{started_ts}.log"
+
+    cmd = [
+        sys.executable,
+        "-u",
+        "train_file.py",
+        "--data-file",
+        str(parquet_path),
+    ]
+    if args.from_scratch:
+        cmd.append("--from-scratch")
+
+    # ── Run training ──
+    session_seconds = 0
+    returncode = 0
+    try:
+        returncode = run_training_subprocess(
+            cmd=cmd,
+            log_path=log_path,
+            cwd=PROJECT_ROOT,
+        )
+    finally:
+        finished_at = _now_utc()
+        session_seconds = int((finished_at - started_at).total_seconds())
+        if returncode == 0:
+            try:
+                _record_session(
+                    symbol=symbol,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    log_path=str(log_path),
+                )
+            except Exception as e:
+                print(f"[警告] 写入训练时长记录失败: {e}", file=sys.stderr)
+
+    success = returncode == 0
+
+    # ── Aggregate summary ──
+    history = _read_history(symbol) if success else {}
+    strategy = _read_strategy(symbol) if success else {}
+
+    history_total = 0
+    history_session_count = 0
+    if success:
+        try:
+            summary = _get_time_summary(symbol)
+            history_total = int(getattr(summary, "history_total_seconds", 0) or 0)
+        except Exception:
+            history_total = 0
+        history_session_count = _history_session_count(symbol)
+
+    best_score = None
+    val_score = None
+    if success:
+        try:
+            bests = history.get("best_score") or []
+            if bests:
+                best_score = float(bests[-1])
+        except (TypeError, ValueError):
+            best_score = None
+        try:
+            vals = history.get("val_score") or []
+            if vals:
+                val_score = float(vals[-1])
+        except (TypeError, ValueError):
+            val_score = None
+
+    current_step = _current_step_from_history(symbol) if success else None
+    formula_decoded = strategy.get("formula_decoded") if success else None
+
+    # ── Summary banner ──
+    print_summary_banner(
+        symbol=symbol,
+        success=success,
+        session_seconds=session_seconds,
+        history_total_seconds=history_total,
+        history_session_count=history_session_count,
+        current_step=current_step,
+        train_steps=target_steps if success else None,
+        best_score=best_score,
+        val_score=val_score,
+        formula_decoded=formula_decoded,
+        returncode=returncode,
+        log_path=str(log_path) if log_path.exists() else None,
+        file=sys.stdout,
+    )
+
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

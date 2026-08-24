@@ -275,3 +275,84 @@ def test_run_training_subprocess_returns_nonzero_on_failure(tmp_path: Path) -> N
         cwd=PROJECT_ROOT,
     )
     assert rc == 7
+
+
+def test_main_missing_data_file_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    """Non-existent parquet should produce a clear error and exit 2."""
+    monkeypatch.setattr(sys, "argv", ["train_cli.py", "NOSUCH", "H1"])
+    monkeypatch.setenv("ALPHAMASTER_DATA_DIR", str(tmp_path))
+    with pytest.raises(SystemExit) as exc_info:
+        train_cli.main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "不存在" in captured.out or "不存在" in captured.err
+
+
+def test_main_happy_path_exits_0(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Full mock-driven happy path: stub subprocess + all JSON readers."""
+
+    # Create a fake data file (we never read it; inspect_parquet_file is stubbed).
+    fake_parquet = tmp_path / "FAKE_H1.parquet"
+    fake_parquet.write_bytes(b"")
+
+    # Stub inspect_parquet_file.
+    fake_info = {
+        "data_file": str(fake_parquet),
+        "filename": fake_parquet.name,
+        "symbol": "FAKE",
+        "timeframe": "H1",
+        "bars": 1000,
+        "years_h1": 0.16,
+        "valid": True,
+        "message": "",
+    }
+    monkeypatch.setattr(
+        "train_cli.inspect_parquet_file", lambda _path: fake_info
+    )
+
+    # Stub run_training_subprocess to return 0.
+    monkeypatch.setattr("train_cli.run_training_subprocess", lambda **_: 0)
+
+    # Stub training_history_*.json reader.
+    monkeypatch.setattr(
+        "train_cli._read_history", lambda _sym: {"best_score": [1.0, 2.4], "val_score": [0.5, 1.8]}
+    )
+
+    # Stub best_*.json reader.
+    monkeypatch.setattr(
+        "train_cli._read_strategy",
+        lambda _sym: {"formula_decoded": "alpha → close"},
+    )
+
+    # Stub training_time functions.
+    monkeypatch.setattr(
+        "train_cli._record_session",
+        lambda **_: None,
+    )
+    summary = type("S", (), {"history_total_seconds": 52928})()
+    monkeypatch.setattr(
+        "train_cli._get_time_summary", lambda _sym, **_kw: summary
+    )
+
+    # Stub history_session_count (count of past sessions).
+    monkeypatch.setattr("train_cli._history_session_count", lambda _sym: 8)
+
+    # Inject current_step / train_steps from somewhere — patch the default.
+    monkeypatch.setattr("train_cli._train_steps", lambda: 5000)
+    monkeypatch.setattr("train_cli._current_step_from_history", lambda _sym: 5000)
+
+    monkeypatch.setattr(sys, "argv", ["train_cli.py", "FAKE", "H1"])
+    monkeypatch.setenv("ALPHAMASTER_DATA_DIR", str(tmp_path))
+
+    with pytest.raises(SystemExit) as exc_info:
+        train_cli.main()
+
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "FAKE" in out
+    assert "训练完成" in out
+    assert "2.4000" in out  # best_score formatted
