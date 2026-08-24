@@ -348,3 +348,24 @@ def test_main_ai_error_exits_1(
     with pytest.raises(SystemExit) as exc_info:
         analyze_cli.main()
     assert exc_info.value.code == 1
+
+
+def test_main_ai_empty_content_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """When AI streams a 'done' event with empty answer, main exits 1."""
+    monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
+    monkeypatch.setattr("analyze_cli.load_settings", lambda: {"ai_api_key": "test-key"})
+    monkeypatch.setattr("analyze_cli.build_cli_snapshot", lambda *a, **kw: {"symbol": "FAKE", "timeframe": "H1"})
+    monkeypatch.setattr(
+        "analyze_cli.analyze_training_stream",
+        lambda **kw: iter([
+            {"type": "done", "provider": "p", "model": "m", "answer": ""},
+        ]),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        analyze_cli.main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "AI 返回内容为空" in captured.err or "AI 返回内容为空" in captured.out

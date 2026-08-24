@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(2)
 
     # ── Prior count from history ──
-    prior_count = len(load_prior_analyses(args.symbol, args.timeframe))
+    prior_count = len(load_prior_analyses(snapshot["symbol"], snapshot["timeframe"]))
 
     # ── Snapshot banner ──
     print_snapshot_banner(
