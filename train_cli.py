@@ -12,10 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
-import threading
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -362,59 +360,6 @@ def _history_session_count(symbol: str) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Progress tailer (background thread)
-# ─────────────────────────────────────────────────────────────────────
-
-# Regex for [N/M] step markers emitted by AlphaEngine.train() (e.g. "[4424/9000]").
-_STEP_RE = re.compile(r"\[(\d+)/(\d+)\]")
-
-
-def _find_latest_step_line(content: str) -> str | None:
-    """Return the latest line in `content` that contains a [N/M] step marker, or None."""
-    latest: str | None = None
-    for line in content.splitlines():
-        if _STEP_RE.search(line):
-            latest = line.strip()
-    return latest
-
-
-def _tail_progress(
-    log_path: Path,
-    stop_event: threading.Event,
-    interval: float = 3.0,
-    file=None,
-) -> None:
-    """Background tailer: every `interval` seconds, print the latest [N/M] line to `file`.
-
-    Used to surface tqdm's step output to the user's terminal even when tqdm disables its
-    progress bar in non-TTY contexts. Each line is printed as a fresh line (no in-place
-    overwrite) — works on any terminal, pipe, or log capture without ANSI handling.
-
-    `file` defaults to `sys.stdout` at call time (defeat Python's default-arg gotcha).
-    """
-    if file is None:
-        file = sys.stdout
-    while not stop_event.is_set():
-        try:
-            if log_path.exists():
-                # Read only the tail to avoid O(n) on large log files.
-                with log_path.open("r", encoding="utf-8", errors="replace") as fp:
-                    fp.seek(0, 2)
-                    size = fp.tell()
-                    fp.seek(max(0, size - 4096))
-                    tail = fp.read()
-                line = _find_latest_step_line(tail)
-                if line:
-                    file.write(f"{line[:200]}\n")
-                    file.flush()
-        except (OSError, ValueError):
-            pass
-        # Wake up either when the stop event fires or after `interval` seconds.
-        if stop_event.wait(interval):
-            return
-
-
-# ─────────────────────────────────────────────────────────────────────
 # Orchestrator
 # ─────────────────────────────────────────────────────────────────────
 
@@ -473,17 +418,6 @@ def main(argv: list[str] | None = None) -> None:
     # ── Run training ──
     session_seconds = 0
     returncode = -1
-    # Background tailer: surface latest [N/M] step line to stdout every 3s.
-    # tqdm disables its progress bar in non-TTY contexts, so without this the user
-    # sees only the startup banner until training finishes.
-    stop_event = threading.Event()
-    tailer = threading.Thread(
-        target=_tail_progress,
-        args=(log_path, stop_event, 3.0),
-        kwargs={"file": sys.stdout},  # pass explicitly to defeat default-arg gotcha
-        daemon=True,
-    )
-    tailer.start()
     try:
         returncode = run_training_subprocess(
             cmd=cmd,
@@ -491,12 +425,6 @@ def main(argv: list[str] | None = None) -> None:
             cwd=PROJECT_ROOT,
         )
     finally:
-        stop_event.set()
-        tailer.join(timeout=4.0)
-        # Ensure the cursor is on a fresh line before the summary banner
-        # (in case its last write did not end with a newline).
-        sys.stdout.write("\n")
-        sys.stdout.flush()
         finished_at = _now_utc()
         session_seconds = int((finished_at - started_at).total_seconds())
         if returncode == 0:
