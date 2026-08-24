@@ -242,3 +242,32 @@ def print_summary_banner(
 
     file.write(sep + "\n\n")
     file.flush()
+
+
+def run_training_subprocess(
+    *,
+    cmd: list[str],
+    log_path: Path,
+    cwd: Path,
+) -> int:
+    """Run `train_file.py` as a subprocess, tee stdout to log_path + terminal.
+
+    Returns the subprocess returncode.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    env["LOGURU_COLORIZE"] = "0"
+
+    with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
+        tee = _TeeWriter(log_fp, sys.stdout)
+        result = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=tee,
+            stderr=subprocess.STDOUT,
+        )
+    return int(result.returncode)

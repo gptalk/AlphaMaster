@@ -253,3 +253,25 @@ def test_print_summary_banner_failure() -> None:
     assert "训练失败" in out
     assert "1" in out  # returncode shown
     assert "logs/train_X_20260824_120000.log" in out
+
+
+def test_run_training_subprocess_returns_zero_on_success(tmp_path: Path) -> None:
+    """A trivial script that exits 0 should return 0."""
+    log_path = tmp_path / "out.log"
+    rc = train_cli.run_training_subprocess(
+        cmd=[sys.executable, "-c", "print('ok')"],
+        log_path=log_path,
+        cwd=PROJECT_ROOT,
+    )
+    assert rc == 0
+    assert "ok" in log_path.read_text(encoding="utf-8")
+
+
+def test_run_training_subprocess_returns_nonzero_on_failure(tmp_path: Path) -> None:
+    log_path = tmp_path / "out.log"
+    rc = train_cli.run_training_subprocess(
+        cmd=[sys.executable, "-c", "import sys; sys.exit(7)"],
+        log_path=log_path,
+        cwd=PROJECT_ROOT,
+    )
+    assert rc == 7
