@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 # Make sure imports work when running as `python analyze_cli.py ...` from project root.
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -172,7 +172,7 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def stream_ai_answer(events, file=None) -> str:
+def stream_ai_answer(events: Iterator[dict[str, Any]], file=None) -> str:
     """Consume analyze_training_stream events; print deltas to file; return full answer.
 
     Raises RuntimeError on any 'error' event or on 'done' with empty answer.

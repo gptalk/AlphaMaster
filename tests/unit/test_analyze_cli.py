@@ -246,6 +246,13 @@ def test_stream_ai_answer_ignores_unknown_event_types() -> None:
     assert answer == "ok"
 
 
+def test_stream_ai_answer_raises_when_stream_exhausts_without_done() -> None:
+    """If the iterator ends without yielding a 'done' event, raise RuntimeError."""
+    events = iter([{"type": "meta", "provider": "p", "model": "m"}])
+    with pytest.raises(RuntimeError, match="未正常结束"):
+        analyze_cli.stream_ai_answer(events)
+
+
 def test_now_utc_default_returns_current_time() -> None:
     before = datetime.now(timezone.utc)
     result = analyze_cli._now_utc()
