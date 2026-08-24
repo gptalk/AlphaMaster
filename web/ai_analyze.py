@@ -56,13 +56,14 @@ _SYSTEM_PROMPT = """你是量化因子挖掘与强化学习训练顾问。
 """
 
 
-def build_training_snapshot(symbol: str | None = None) -> dict[str, Any]:
+def build_training_snapshot(symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any]:
     training = training_manager.status()
     job = training.get("job") or {}
     settings = load_settings()
 
     sym = (symbol or job.get("symbol") or "").strip()
-    timeframe = str(job.get("timeframe") or "").strip().upper()
+    tf = (timeframe or job.get("timeframe") or "").strip().upper()
+    timeframe = tf
 
     data_file = settings.get("last_data_file") or ""
     if data_file:
