@@ -100,27 +100,42 @@ AlphaMaster/
 2. data_dir = env(ALPHAMASTER_DATA_DIR) or args.data_dir or "data/kline/"
 3. parquet_path = f"{data_dir}/{SYMBOL}_{TIMEFRAME}.parquet"
 4. info = inspect_parquet_file(parquet_path)
-   ├─ 不存在 → print 尝试过的绝对路径 + exit 2
-   └─ bars < MIN_BARS → print 错误 + exit 1
+   ├─ FileNotFoundError → print 尝试过的绝对路径 + exit 2
+   └─ ValueError（bars < MIN_BARS 等）→ print 错误原文 + exit 1
 5. 打印启动横幅（品种、周期、文件、K线数、年限、目标步数）
+   若 info["years"] 为 None（仅 H1 自动算年限），显示 "—" 而非 0
 6. started_at = now_utc()
+   safe_sym = SYMBOL.replace(".", "_")
+   started_ts = started_at.strftime("%Y%m%d_%H%M%S")
+   log_path = f"logs/train_{safe_sym}_{started_ts}.log"
 7. cmd = [sys.executable, "-u", "train_file.py", "--data-file", parquet_path]
    if from_scratch: cmd.append("--from-scratch")
-8. env = os.environ.copy() (PYTHONUNBUFFERED=1, PYTHONIOENCODING=utf-8, PYTHONUTF8=1)
-9. subprocess.run(cmd, cwd=PROJECT_ROOT, env=env)  # stdout/stderr 默认透传
-   ├─ returncode != 0 → print "训练未完成" + exit 1
-10. finished_at = now_utc()
-11. record_training_session(symbol=SYMBOL, started_at, finished_at, log_path="")
+8. log_fp = open(log_path, "w", encoding="utf-8", buffering=1)
+   tee = _TeeWriter(log_fp, sys.stdout)  # 自定义类：同时写文件和终端
+   env = os.environ.copy() (PYTHONUNBUFFERED=1, PYTHONIOENCODING=utf-8, PYTHONUTF8=1)
+   result = subprocess.run(
+       cmd,
+       cwd=PROJECT_ROOT,
+       env=env,
+       stdout=tee,
+       stderr=subprocess.STDOUT,
+   )
+   log_fp.close()
+   if result.returncode != 0:
+       print_failure_banner(elapsed=...)
+       sys.exit(1)
+9. finished_at = now_utc()
+10. record_training_session(symbol=SYMBOL, started_at, finished_at, log_path=str(log_path))
     ├─ 调用 web.training_time.record_training_session
-    └─ 会写入 training_time_{safe_symbol}.json（仿 web 端逻辑）
-12. summary = get_training_time_summary(SYMBOL, job=None, active=False)
-13. history = json.load("training_history_{SYMBOL}.json") if exists else {}
+    └─ 写入 training_time_{safe_sym}.json（仿 web 端逻辑）
+11. summary = get_training_time_summary(SYMBOL, job=None, active=False)
+12. history = json.load("training_history_{SYMBOL}.json") if exists else {}
     best_score = history["best_score"][-1] if exists else None
     val_score  = history["val_score"][-1]  if exists else None
-14. strategy = json.load("strategies/best_{SYMBOL}.json") if exists else {}
+13. strategy = json.load("strategies/best_{SYMBOL}.json") if exists else {}
     formula_decoded = strategy.get("formula_decoded")
-15. 打印结束横幅（彩色）
-16. exit 0
+14. 打印结束横幅（彩色）
+15. exit 0
 ```
 
 ---
@@ -143,7 +158,7 @@ AlphaMaster/
 
 ### 训练中
 
-tqdm 进度条从 `train_file.py` 子进程 stdout **直接透传**（不拦截、不重写）。CLI 主进程只负责 wait。
+tqdm 进度条通过 `_TeeWriter` 同时写入终端和日志文件——用户实时可见，事后可用 `tail -f` 或直接看日志文件调试。
 
 ### 结束横幅（成功）
 
@@ -255,7 +270,7 @@ Windows `cmd.exe` 较新版本默认开启 VT；但旧版本（Win10 < 1903）�
 | `web.training_time` 模块本身依赖 `web.training_manager` 间接导入 | 已查证 `web/training_time.py` 是独立模块，**无** `from web.training_manager import` 依赖。可直接 import。 |
 | Windows ANSI 在老版 cmd 乱码 | 不做兼容；建议用 Windows Terminal。失败风险由用户接受（不影响 Linux/macOS） |
 | `inspect_parquet_file` 抛非 `FileNotFoundError`/`ValueError` 的异常 | catch-all 兜底，打印 traceback + exit 1 |
-| subprocess 输出缓冲导致 tqdm 不刷新 | `subprocess.run` 默认透传 + `env["PYTHONUNBUFFERED"]=1`（与 web/training_manager.py 同款设置） |
+| subprocess 输出缓冲导致 tqdm 不刷新 | `env["PYTHONUNBUFFERED"]=1` + `_TeeWriter` 写入缓冲=1 的文件 + 终端 line-buffered stdout |
 | 用户重复启同品种会触发"已有训练任务"错误 | `train_file.py` 不检查独占；web 端的 `training_manager` 才检查独占。CLI 无此限制，符合预期。 |
 
 ---
