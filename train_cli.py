@@ -22,6 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Forward-looking imports — used by run_training_subprocess (Task 6) and main() (Task 7).
+# Kept at module top level so tests can `monkeypatch.setattr("train_cli.inspect_parquet_file", ...)`.
+from data_pipeline.parquet_manager import inspect_parquet_file
+from model_core.config import ModelConfig
+from web.training_time import get_training_time_summary, record_training_session
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Constants
