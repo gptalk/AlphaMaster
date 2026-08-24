@@ -6,6 +6,8 @@ import io
 import json
 import os
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -384,3 +386,83 @@ def test_main_happy_path_exits_0(
     assert "FAKE" in out
     assert "训练完成" in out
     assert "2.4000" in out  # best_score formatted
+
+
+def test_find_latest_step_line_finds_latest() -> None:
+    """Should return the LAST line containing [N/M], not the first."""
+    content = (
+        "some preamble\n"
+        "[100/9000] step 100 metrics\n"
+        "[200/9000] step 200 metrics\n"
+        "[300/9000] step 300 metrics\n"
+        "trailing noise\n"
+    )
+    result = train_cli._find_latest_step_line(content)
+    assert result is not None
+    assert "[300/9000]" in result
+    assert "step 300" in result
+
+
+def test_find_latest_step_line_returns_none_when_no_match() -> None:
+    """No [N/M] markers → returns None."""
+    content = "no markers here\njust text\n"
+    assert train_cli._find_latest_step_line(content) is None
+
+
+def test_find_latest_step_line_ignores_partial_brackets() -> None:
+    """Only [N/M] (numeric) counts. [foo/bar] or [a/b] don't match."""
+    content = "[abc/def] not a step\n[1/2] too small\n[1000/9000] real\n"
+    result = train_cli._find_latest_step_line(content)
+    assert result is not None
+    assert "[1000/9000]" in result
+
+
+def test_tail_progress_writes_latest_line(tmp_path: Path) -> None:
+    """Background tailer should pick up the latest [N/M] line from the log file."""
+    log = tmp_path / "out.log"
+    log.write_text(
+        "[100/9000] metrics A\n[200/9000] metrics B\n[300/9000] metrics C\n",
+        encoding="utf-8",
+    )
+    buf = io.StringIO()
+    stop_event = threading.Event()
+
+    # Fast interval so the test runs in <1s
+    tailer = threading.Thread(
+        target=train_cli._tail_progress,
+        args=(log, stop_event, 0.05),
+        kwargs={"file": buf},
+        daemon=True,
+    )
+    tailer.start()
+
+    # Give the tailer ~150ms to run one cycle
+    time.sleep(0.15)
+    stop_event.set()
+    tailer.join(timeout=1.0)
+
+    out = buf.getvalue()
+    assert "[300/9000]" in out
+    assert "metrics C" in out
+
+
+def test_tail_progress_handles_missing_log_file(tmp_path: Path) -> None:
+    """If the log file doesn't exist yet (e.g. very early in training), tailer should silently no-op."""
+    nonexistent = tmp_path / "missing.log"
+    buf = io.StringIO()
+    stop_event = threading.Event()
+
+    tailer = threading.Thread(
+        target=train_cli._tail_progress,
+        args=(nonexistent, stop_event, 0.05),
+        kwargs={"file": buf},
+        daemon=True,
+    )
+    tailer.start()
+
+    time.sleep(0.15)
+    stop_event.set()
+    tailer.join(timeout=1.0)
+
+    # No crash, no spurious output
+    assert buf.getvalue() == ""
