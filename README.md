@@ -83,6 +83,7 @@ AlphaMaster/
 ├── checkpoints/         # 训练检查点
 ├── run_web.py           # 启动 Web 控制台
 ├── train_file.py        # CLI：从单个 Parquet 训练
+├── train_cli.py         # CLI：传品种+周期，自动定位 parquet + ANSI 汇总输出
 └── requirements.txt
 ```
 
@@ -112,7 +113,14 @@ python run_web.py --port 8765
 # CLI 训练（自动续训；加 --from-scratch 则重新训练）
 python train_file.py --data-file D:\K线数据\BTCUSDT_H1.parquet
 python train_file.py --data-file D:\K线数据\BTCUSDT_H1.parquet --from-scratch
+
+# train_cli.py — 镜像 Web「模型训练」页的命令行版本
+# 传品种+周期，CLI 自动在默认目录（data/kline/，可被 ALPHAMASTER_DATA_DIR 覆盖）定位 parquet
+python train_cli.py 600519.SH H1
+python train_cli.py BTCUSDT 1h --data-dir D:\K线数据 --from-scratch
 ```
+
+`train_cli.py` 与 `train_file.py` 的区别：前者按品种+周期自动拼路径，前台阻塞并在终端打印彩色汇总（K线数/数据年限/本次+历史训练时长/最优分数/验证分数/最新公式）；后者接收任意 parquet 路径，由调用方负责指定文件。两者都复用同一份 `train_file.py` 训练内核，因此输出与 Web 端「模型训练」模块一致。
 
 策略输出默认在 `strategies/best_{symbol}.json`。
 
