@@ -255,6 +255,11 @@ def run_training_subprocess(
     """Run `train_file.py` as a subprocess, tee stdout to log_path + terminal.
 
     Returns the subprocess returncode.
+
+    Implementation note: we use `subprocess.PIPE` and read line-by-line, then write
+    each line to both the log file and `sys.stdout`. Passing a custom file-like as
+    `stdout` directly doesn't work — `subprocess` calls `.fileno()` and writes to that
+    fd, bypassing any custom `.write()` method (so a true tee wouldn't tee).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -263,16 +268,28 @@ def run_training_subprocess(
     env["LOGURU_COLORIZE"] = "0"
 
     with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
-        tee = _TeeWriter(log_fp, sys.stdout)
-        # Merge stderr → stdout so both go through the tee (we don't need to color stderr separately)
-        result = subprocess.run(
+        # Merge stderr → stdout so both go through the same tee (we don't need
+        # to color stderr separately)
+        process = subprocess.Popen(
             cmd,
             cwd=cwd,
             env=env,
-            stdout=tee,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            bufsize=1,
+            text=True,
         )
-    return int(result.returncode)
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                log_fp.write(line)
+                log_fp.flush()
+                sys.stdout.write(line)
+                sys.stdout.flush()
+        finally:
+            process.stdout.close()
+        returncode = process.wait()
+    return int(returncode)
 
 
 # ─────────────────────────────────────────────────────────────────────
