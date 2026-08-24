@@ -274,3 +274,63 @@ def print_summary_banner(
     file.write(f"  详细报告:   {output_dir}multi_factor_report.json\n")
     file.write(sep + "\n\n")
     file.flush()
+
+
+def run_backtest_subprocess(
+    *,
+    cmd: list[str],
+    log_path: Path,
+    cwd: Path,
+) -> int:
+    """Run `run_backtest.py` as a subprocess, tee stdout to log_path + terminal.
+
+    Also scans each line for backtest phase keywords and emits phase
+    transitions via `print_phase_transition` (only on actual transitions,
+    so the user sees one line per phase, not per log line).
+
+    Returns the subprocess returncode.
+
+    Uses Popen + PIPE so the parent can scan log lines for phase transitions
+    (mirrors the train_cli.py approach).
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONUTF8"] = "1"
+    env["LOGURU_COLORIZE"] = "0"
+
+    # Phase labels keyed by phase id (mirrors BACKTEST_PHASES order from web).
+    _PHASE_LABELS = {p[0]: p[1] for p in BACKTEST_PHASES}
+
+    accumulated: list[str] = []
+    last_phase = "init"
+
+    with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            text=True,
+        )
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                log_fp.write(line)
+                log_fp.flush()
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                accumulated.append(line)
+                phase = detect_backtest_phase("".join(accumulated))
+                if phase != last_phase:
+                    last_phase = phase
+                    print_phase_transition(
+                        phase_key=phase,
+                        phase_label=_PHASE_LABELS.get(phase, phase),
+                    )
+        finally:
+            process.stdout.close()
+        returncode = process.wait()
+    return int(returncode)

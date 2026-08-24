@@ -273,3 +273,54 @@ def test_print_summary_banner_missing_fields_show_na() -> None:
     )
     out = buf.getvalue()
     assert "N/A" in out
+
+
+def test_run_backtest_subprocess_returns_zero_on_success(tmp_path: Path) -> None:
+    log = tmp_path / "out.log"
+    rc = backtest_cli.run_backtest_subprocess(
+        cmd=[sys.executable, "-c", "print('ok')"],
+        log_path=log,
+        cwd=PROJECT_ROOT,
+    )
+    assert rc == 0
+    assert "ok" in log.read_text(encoding="utf-8")
+
+
+def test_run_backtest_subprocess_returns_nonzero_on_failure(tmp_path: Path) -> None:
+    log = tmp_path / "out.log"
+    rc = backtest_cli.run_backtest_subprocess(
+        cmd=[sys.executable, "-c", "import sys; sys.exit(7)"],
+        log_path=log,
+        cwd=PROJECT_ROOT,
+    )
+    assert rc == 7
+
+
+def test_run_backtest_subprocess_emits_phase_transitions(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Phases printed as log lines accumulate; transitions emitted on changes only."""
+    log = tmp_path / "out.log"
+    # Simulate run_backtest.py output covering several phases.
+    script = (
+        "import sys\n"
+        "print('交易成本: 手续费=0.02%')\n"
+        "print('加载各品种策略: ...')\n"
+        "print('正在加载数据')\n"
+        "print('品种: [X]')\n"
+        "print('生成 K 线图')\n"
+        "print('完成。')\n"
+    )
+    rc = backtest_cli.run_backtest_subprocess(
+        cmd=[sys.executable, "-c", script],
+        log_path=log,
+        cwd=PROJECT_ROOT,
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    # Verify phase transitions appeared in terminal output.
+    assert "[阶段" in captured.out
+    # Each phase label should appear (cost → strategy → data → compute → chart → done).
+    for label in ["交易成本", "加载各品种策略", "正在加载数据", "完成"]:
+        assert label in captured.out, f"missing phase: {label}"
