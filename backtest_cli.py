@@ -141,3 +141,27 @@ def detect_backtest_phase(text: str) -> str:
     if "完成。" in text or "JSON 报告已保存" in text:
         detected = "done"
     return detected
+
+
+def read_final_report(report_path: str) -> dict[str, Any] | None:
+    """Read multi_factor_report.json. Returns None if missing or invalid.
+
+    Returns a normalized dict with keys: mode, symbols (list), portfolio (dict).
+    """
+    path = Path(report_path)
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    symbols_raw = raw.get("symbols") or {}
+    symbols_list = list(symbols_raw.keys()) if isinstance(symbols_raw, dict) else []
+    portfolio = raw.get("portfolio") or {}
+    return {
+        "mode": str(raw.get("mode") or "?"),
+        "symbols": symbols_list,
+        "portfolio": portfolio if isinstance(portfolio, dict) else {},
+    }

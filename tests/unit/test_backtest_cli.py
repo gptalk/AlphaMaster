@@ -155,3 +155,48 @@ def test_detect_phase_compute_requires_brackets() -> None:
     assert backtest_cli.detect_backtest_phase("品种: 数据为空") != "compute"
     # But with brackets (real report output) it should match
     assert backtest_cli.detect_backtest_phase("品种: ['600519.SH']") == "compute"
+
+
+def test_read_final_report_single(tmp_path: Path) -> None:
+    """Single-symbol report: has 'portfolio' block + 'symbols' with one entry."""
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps({
+        "mode": "single",
+        "symbols": {"600519.SH": {"total_return": 1.25, "sharpe": 1.56}},
+        "portfolio": {
+            "total_return": 1.252,
+            "sharpe": 1.562,
+            "sortino": 2.226,
+            "profit_loss_ratio": 3.034,
+        },
+    }))
+    result = backtest_cli.read_final_report(str(report_path))
+    assert result is not None
+    assert result["mode"] == "single"
+    assert result["symbols"] == ["600519.SH"]
+    assert result["portfolio"]["total_return"] == 1.252
+
+
+def test_read_final_report_multi(tmp_path: Path) -> None:
+    """Multi-symbol report: 'symbols' dict has multiple entries."""
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps({
+        "mode": "multi",
+        "symbols": {"600519.SH": {"total_return": 1.25}, "BTCUSDT": {"total_return": 0.5}},
+        "portfolio": {"total_return": 1.0, "sharpe": 1.5},
+    }))
+    result = backtest_cli.read_final_report(str(report_path))
+    assert result is not None
+    assert sorted(result["symbols"]) == ["600519.SH", "BTCUSDT"]
+
+
+def test_read_final_report_missing_file(tmp_path: Path) -> None:
+    result = backtest_cli.read_final_report(str(tmp_path / "nonexistent.json"))
+    assert result is None
+
+
+def test_read_final_report_invalid_json(tmp_path: Path) -> None:
+    report_path = tmp_path / "bad.json"
+    report_path.write_text("not json {{{")
+    result = backtest_cli.read_final_report(str(report_path))
+    assert result is None
