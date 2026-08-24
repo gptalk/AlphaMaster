@@ -124,9 +124,10 @@ def test_tee_writer_writes_to_both(tmp_path: Path) -> None:
     assert tee._stream.getvalue() == "hello\nworld"
 
 
-def test_tee_writer_is_a_file_like_object(tmp_path: Path) -> None:
-    log_file = tmp_path / "out.log"
-    with log_file.open("w", encoding="utf-8") as fp:
-        tee = train_cli._TeeWriter(fp, io.StringIO())
-        # subprocess.Popen needs fileno() on some platforms
-        assert hasattr(tee, "fileno") or hasattr(tee, "write")
+def test_tee_writer_fileno_delegates_to_primary(tmp_path: Path) -> None:
+    log_file = (tmp_path / "out.log").open("w", encoding="utf-8")
+    try:
+        tee = train_cli._TeeWriter(log_file, io.StringIO())
+        assert tee.fileno() == log_file.fileno()
+    finally:
+        log_file.close()
