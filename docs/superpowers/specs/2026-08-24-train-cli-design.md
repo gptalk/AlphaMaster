@@ -103,7 +103,7 @@ AlphaMaster/
    ├─ FileNotFoundError → print 尝试过的绝对路径 + exit 2
    └─ ValueError（bars < MIN_BARS 等）→ print 错误原文 + exit 1
 5. 打印启动横幅（品种、周期、文件、K线数、年限、目标步数）
-   若 info["years"] 为 None（仅 H1 自动算年限），显示 "—" 而非 0
+   若 info["years_h1"] 为 None（仅 H1 或 time 列缺失才计算），显示 "—" 而非 0
 6. started_at = now_utc()
    safe_sym = SYMBOL.replace(".", "_")
    started_ts = started_at.strftime("%Y%m%d_%H%M%S")
@@ -272,6 +272,7 @@ Windows `cmd.exe` 较新版本默认开启 VT；但旧版本（Win10 < 1903）�
 | `inspect_parquet_file` 抛非 `FileNotFoundError`/`ValueError` 的异常 | catch-all 兜底，打印 traceback + exit 1 |
 | subprocess 输出缓冲导致 tqdm 不刷新 | `env["PYTHONUNBUFFERED"]=1` + `_TeeWriter` 写入缓冲=1 的文件 + 终端 line-buffered stdout |
 | 用户重复启同品种会触发"已有训练任务"错误 | `train_file.py` 不检查独占；web 端的 `training_manager` 才检查独占。CLI 无此限制，符合预期。 |
+| `inspect_parquet_file` 字段名是 `years_h1` 而非 `years` | 已修正 spec 数据流步骤 5；CLI 读取 `info["years_h1"]` |
 
 ---
 
