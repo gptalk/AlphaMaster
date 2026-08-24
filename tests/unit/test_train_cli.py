@@ -418,7 +418,7 @@ def test_find_latest_step_line_ignores_partial_brackets() -> None:
 
 
 def test_tail_progress_writes_latest_line(tmp_path: Path) -> None:
-    """Background tailer should pick up the latest [N/M] line from the log file."""
+    """Background tailer should print the latest [N/M] line on a fresh line (no in-place overwrite)."""
     log = tmp_path / "out.log"
     log.write_text(
         "[100/9000] metrics A\n[200/9000] metrics B\n[300/9000] metrics C\n",
@@ -436,7 +436,7 @@ def test_tail_progress_writes_latest_line(tmp_path: Path) -> None:
     )
     tailer.start()
 
-    # Give the tailer ~150ms to run one cycle
+    # Give the tailer ~150ms to run at least one cycle
     time.sleep(0.15)
     stop_event.set()
     tailer.join(timeout=1.0)
@@ -444,6 +444,10 @@ def test_tail_progress_writes_latest_line(tmp_path: Path) -> None:
     out = buf.getvalue()
     assert "[300/9000]" in out
     assert "metrics C" in out
+    # Each progress line must be on its own line (no \r in-place overwrite).
+    assert "\r" not in out
+    # The tailer output must end with a newline so the cursor is on a fresh line.
+    assert out.endswith("\n")
 
 
 def test_tail_progress_handles_missing_log_file(tmp_path: Path) -> None:

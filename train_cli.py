@@ -384,10 +384,11 @@ def _tail_progress(
     interval: float = 3.0,
     file=None,
 ) -> None:
-    """Background tailer: every `interval` seconds, write the latest [N/M] line to `file`.
+    """Background tailer: every `interval` seconds, print the latest [N/M] line to `file`.
 
     Used to surface tqdm's step output to the user's terminal even when tqdm disables its
-    progress bar in non-TTY contexts. Uses `\\r\\033[K` to overwrite the previous line.
+    progress bar in non-TTY contexts. Each line is printed as a fresh line (no in-place
+    overwrite) — works on any terminal, pipe, or log capture without ANSI handling.
 
     `file` defaults to `sys.stdout` at call time (defeat Python's default-arg gotcha).
     """
@@ -404,7 +405,7 @@ def _tail_progress(
                     tail = fp.read()
                 line = _find_latest_step_line(tail)
                 if line:
-                    file.write(f"\r\033[K{line[:200]}")
+                    file.write(f"{line[:200]}\n")
                     file.flush()
         except (OSError, ValueError):
             pass
@@ -492,8 +493,9 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         stop_event.set()
         tailer.join(timeout=4.0)
-        # Clear the tailer's last line so the summary banner starts on a fresh line.
-        sys.stdout.write("\r\033[K\n")
+        # Ensure the cursor is on a fresh line before the summary banner
+        # (in case its last write did not end with a newline).
+        sys.stdout.write("\n")
         sys.stdout.flush()
         finished_at = _now_utc()
         session_seconds = int((finished_at - started_at).total_seconds())
