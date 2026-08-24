@@ -14,7 +14,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Forward-looking imports — used by main(). Kept at module top level so tests can
 # `monkeypatch.setattr("backtest_cli.inspect_strategy_file", ...)`.
-from web.backtest_manager import BACKTEST_PHASES, JobState  # noqa: E402
+from web.backtest_manager import BACKTEST_PHASES  # noqa: E402
 from web.settings import load_settings  # noqa: E402
 from web.strategy_file import inspect_strategy_file  # noqa: E402
 
