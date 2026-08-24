@@ -96,3 +96,54 @@ def test_now_utc_default_returns_current_time() -> None:
     result = backtest_cli._now_utc()
     after = datetime.now(timezone.utc)
     assert before <= result <= after
+
+
+def test_detect_phase_empty_text() -> None:
+    assert backtest_cli.detect_backtest_phase("") == "init"
+
+
+def test_detect_phase_init_default() -> None:
+    """Text with no keywords → init."""
+    assert backtest_cli.detect_backtest_phase("some random text\nmore text") == "init"
+
+
+def test_detect_phase_cost() -> None:
+    text = "交易成本（单边）: 手续费=0.02% 滑点=0.01%"
+    assert backtest_cli.detect_backtest_phase(text) == "cost"
+
+
+def test_detect_phase_strategy() -> None:
+    text = "加载各品种策略 score=10.245 模式: ftmo"
+    assert backtest_cli.detect_backtest_phase(text) == "strategy"
+
+
+def test_detect_phase_data() -> None:
+    text = "正在加载数据 600519.SH_1d.parquet"
+    assert backtest_cli.detect_backtest_phase(text) == "data"
+
+
+def test_detect_phase_compute() -> None:
+    text = "品种: ['600519.SH'] 多因子回测报告"
+    assert backtest_cli.detect_backtest_phase(text) == "compute"
+
+
+def test_detect_phase_chart() -> None:
+    text = "生成 K 线图 5 张缩放图"
+    assert backtest_cli.detect_backtest_phase(text) == "chart"
+
+
+def test_detect_phase_done() -> None:
+    text = "完成。 JSON 报告已保存"
+    assert backtest_cli.detect_backtest_phase(text) == "done"
+
+
+def test_detect_phase_picks_latest() -> None:
+    """With multiple keywords, the last matched phase wins (scanning forward)."""
+    text = (
+        "交易成本: ...\n"
+        "加载各品种策略: ...\n"
+        "正在加载数据: ...\n"
+        "品种: [...]\n"
+        "完成。\n"
+    )
+    assert backtest_cli.detect_backtest_phase(text) == "done"

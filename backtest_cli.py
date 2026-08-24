@@ -117,3 +117,26 @@ def merge_cost_settings(args: argparse.Namespace, settings: dict[str, Any]) -> d
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def detect_backtest_phase(text: str) -> str:
+    """Detect the latest backtest phase from accumulated log text.
+
+    Mirrors `web.backtest_manager.BacktestManager._current_phase` logic
+    (keyword-based, scans forward so the last matched phase wins).
+    Returns one of: init, cost, strategy, data, compute, chart, done.
+    """
+    detected = "init"
+    if "交易成本" in text or "手续费=" in text:
+        detected = "cost"
+    if "加载各品种策略" in text or "score=" in text or "模式:" in text:
+        detected = "strategy"
+    if "正在加载数据" in text:
+        detected = "data"
+    if "品种:" in text or "多因子回测报告" in text:
+        detected = "compute"
+    if "生成 K 线图" in text or "张缩放图" in text:
+        detected = "chart"
+    if "完成。" in text or "JSON 报告已保存" in text:
+        detected = "done"
+    return detected
