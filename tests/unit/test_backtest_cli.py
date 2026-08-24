@@ -207,6 +207,7 @@ def test_print_startup_banner_contains_key_fields() -> None:
     buf = io.StringIO()
     backtest_cli.print_startup_banner(
         strategy_info=strategy_info,
+        strategy_file="strategies/best_600519.SH.json",
         data_file="/tmp/data.parquet",
         commission=0.02,
         slippage=0.01,

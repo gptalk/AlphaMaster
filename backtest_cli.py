@@ -175,6 +175,7 @@ def read_final_report(report_path: str) -> dict[str, Any] | None:
 def print_startup_banner(
     *,
     strategy_info: dict[str, Any],
+    strategy_file: str,
     data_file: str,
     commission: float,
     slippage: float,
@@ -187,7 +188,6 @@ def print_startup_banner(
         file = sys.stdout
     symbol = strategy_info.get("symbol", "?")
     timeframe = strategy_info.get("timeframe", "?")
-    strategy_file = strategy_info.get("strategy_file") or "?"
 
     sep = "═" * LINE_WIDTH
     file.write(sep + "\n")
@@ -371,9 +371,6 @@ def main(argv: list[str] | None = None) -> None:
         print(f"        请检查 --strategy-file 参数: {args.strategy_file}", file=sys.stderr)
         sys.exit(2)
 
-    # Strategy_info may not contain data_file — add it from args for the banner.
-    strategy_info.setdefault("strategy_file", args.strategy_file)
-
     data_file = resolve_data_file(args, strategy_info)
     if not data_file:
         print("[错误] 无法确定数据文件路径。", file=sys.stderr)
@@ -405,6 +402,7 @@ def main(argv: list[str] | None = None) -> None:
     # ── Startup banner ──
     print_startup_banner(
         strategy_info=strategy_info,
+        strategy_file=args.strategy_file,
         data_file=data_file,
         commission=costs["commission"],
         slippage=costs["slippage"],
@@ -423,7 +421,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     finally:
         finished_at = _now_utc()
-        elapsed = int((finished_at - started_at).total_seconds())
+        elapsed = max(0, int((finished_at - started_at).total_seconds()))
 
     if returncode != 0:
         print(f"\n[错误] 回测子进程退出码 {returncode}", file=sys.stderr)
