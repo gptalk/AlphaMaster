@@ -141,3 +141,104 @@ class _TeeWriter:
     def close(self) -> None:
         # Don't close — the owner closes the underlying file/stream.
         pass
+
+
+def print_startup_banner(
+    *,
+    symbol: str,
+    info: dict[str, Any],
+    target_steps: int,
+    from_scratch: bool,
+    file=sys.stdout,
+) -> None:
+    """Print the colored startup banner before training starts."""
+    bars = info.get("bars", 0)
+    years = info.get("years_h1")
+    timeframe = info.get("timeframe", "?")
+    data_file = info.get("data_file", "?")
+
+    mode_label = "重新训练（从头）" if from_scratch else "自动续训"
+
+    sep = "═" * LINE_WIDTH
+    file.write(sep + "\n")
+    file.write(f"  {ANSI_CYAN_BOLD}AlphaMaster 训练{ANSI_RESET} — {ANSI_BOLD}{symbol} / {timeframe}{ANSI_RESET}\n")
+    file.write(sep + "\n")
+    file.write(f"  数据文件:  {data_file}\n")
+    file.write(f"  K线数量:   {ANSI_BOLD}{bars:,}{ANSI_RESET}根\n")
+    if years is None:
+        file.write(f"  数据年限:  {ANSI_DIM}—{ANSI_RESET}\n")
+    else:
+        file.write(f"  数据年限:  {ANSI_BOLD}{years}{ANSI_RESET} 年\n")
+    file.write(f"  目标步数:  {target_steps:,}\n")
+    file.write(f"  模式:      {mode_label}\n")
+    file.write(sep + "\n\n")
+    file.flush()
+
+
+def print_summary_banner(
+    *,
+    symbol: str,
+    success: bool,
+    session_seconds: int | None,
+    history_total_seconds: int,
+    history_session_count: int,
+    current_step: int | None,
+    train_steps: int | None,
+    best_score: float | None,
+    val_score: float | None,
+    formula_decoded: str | None,
+    returncode: int,
+    log_path: str | None,
+    file=sys.stdout,
+) -> None:
+    """Print the colored summary banner after training completes (or fails)."""
+    sep = "═" * LINE_WIDTH
+    file.write("\n" + sep + "\n")
+    if success:
+        file.write(
+            f"  {ANSI_GREEN_BOLD}✓ 训练完成{ANSI_RESET} — {ANSI_BOLD}{symbol}{ANSI_RESET}\n"
+        )
+    else:
+        file.write(
+            f"  {ANSI_RED_BOLD}✗ 训练失败{ANSI_RESET} — {ANSI_BOLD}{symbol}{ANSI_RESET}\n"
+        )
+    file.write(sep + "\n")
+    file.write(f"  本次时长:    {format_duration(session_seconds)}\n")
+
+    if success:
+        file.write(
+            f"  历史累计:    {format_duration(history_total_seconds)}  "
+            f"({ANSI_DIM}{history_session_count} 次会话{ANSI_RESET})\n"
+        )
+
+        if current_step is not None and train_steps:
+            pct = 100.0 * current_step / train_steps if train_steps > 0 else 0.0
+            file.write(
+                f"  最终进度:    {ANSI_BOLD}{current_step:,} / {train_steps:,}{ANSI_RESET} "
+                f"({ANSI_GREEN_BOLD}{pct:.1f}%{ANSI_RESET})\n"
+            )
+        else:
+            file.write(f"  最终进度:    N/A\n")
+
+        if best_score is not None:
+            file.write(f"  最优分数:    {ANSI_YELLOW_BOLD}{best_score:.4f}{ANSI_RESET}\n")
+        else:
+            file.write(f"  最优分数:    N/A\n")
+
+        if val_score is not None:
+            file.write(f"  验证分数:    {ANSI_YELLOW_BOLD}{val_score:.4f}{ANSI_RESET}\n")
+        else:
+            file.write(f"  验证分数:    N/A\n")
+
+        if formula_decoded:
+            file.write(f"  最新公式:    {ANSI_CYAN}{formula_decoded}{ANSI_RESET}\n")
+        else:
+            file.write(f"  最新公式:    N/A\n")
+
+    if not success:
+        file.write(f"  子进程退出码: {returncode}\n")
+        if log_path:
+            file.write(f"  详细日志:    {log_path}\n")
+
+    file.write(sep + "\n\n")
+    file.flush()

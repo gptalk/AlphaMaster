@@ -131,3 +131,125 @@ def test_tee_writer_fileno_delegates_to_primary(tmp_path: Path) -> None:
         assert tee.fileno() == log_file.fileno()
     finally:
         log_file.close()
+
+
+def test_print_startup_banner_contains_key_fields() -> None:
+    info = {
+        "data_file": "/tmp/600519.SH_H1.parquet",
+        "bars": 11520,
+        "years_h1": 1.85,
+        "timeframe": "H1",
+    }
+    buf = io.StringIO()
+    train_cli.print_startup_banner(
+        symbol="600519.SH",
+        info=info,
+        target_steps=5000,
+        from_scratch=False,
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "600519.SH" in out
+    assert "H1" in out
+    assert "11,520" in out  # bars with thousands separator
+    assert "1.85" in out
+    assert "5,000" in out  # target_steps with thousands separator
+    assert "自动续训" in out
+
+
+def test_print_startup_banner_handles_none_years() -> None:
+    info = {
+        "data_file": "/tmp/X_H1.parquet",
+        "bars": 100,
+        "years_h1": None,
+        "timeframe": "H1",
+    }
+    buf = io.StringIO()
+    train_cli.print_startup_banner(
+        symbol="X", info=info, target_steps=5000, from_scratch=False, file=buf
+    )
+    out = buf.getvalue()
+    assert "—" in out  # years fallback
+    assert "100" in out
+
+
+def test_print_startup_banner_from_scratch_label() -> None:
+    info = {"data_file": "/x.parquet", "bars": 100, "years_h1": 1.0, "timeframe": "H1"}
+    buf = io.StringIO()
+    train_cli.print_startup_banner(
+        symbol="X", info=info, target_steps=100, from_scratch=True, file=buf
+    )
+    assert "重新训练" in buf.getvalue()
+
+
+def test_print_summary_banner_success_contains_fields() -> None:
+    buf = io.StringIO()
+    train_cli.print_summary_banner(
+        symbol="600519.SH",
+        success=True,
+        session_seconds=8132,
+        history_total_seconds=52928,
+        history_session_count=8,
+        current_step=5000,
+        train_steps=5000,
+        best_score=2.4102,
+        val_score=1.8731,
+        formula_decoded="alpha → close → ts_mean(5)",
+        returncode=0,
+        log_path=None,
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "训练完成" in out
+    assert "2h 15m 32s" in out  # session
+    assert "14h 42m 08s" in out  # history
+    assert "8" in out  # session count
+    assert "100.0%" in out  # progress pct
+    assert "2.4102" in out
+    assert "1.8731" in out
+    assert "alpha → close → ts_mean(5)" in out
+
+
+def test_print_summary_banner_success_missing_fields_show_na() -> None:
+    buf = io.StringIO()
+    train_cli.print_summary_banner(
+        symbol="X",
+        success=True,
+        session_seconds=10,
+        history_total_seconds=0,
+        history_session_count=0,
+        current_step=100,
+        train_steps=100,
+        best_score=None,
+        val_score=None,
+        formula_decoded=None,
+        returncode=0,
+        log_path=None,
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "N/A" in out
+    assert "训练完成" in out
+
+
+def test_print_summary_banner_failure() -> None:
+    buf = io.StringIO()
+    train_cli.print_summary_banner(
+        symbol="X",
+        success=False,
+        session_seconds=120,
+        history_total_seconds=0,
+        history_session_count=0,
+        current_step=None,
+        train_steps=None,
+        best_score=None,
+        val_score=None,
+        formula_decoded=None,
+        returncode=1,
+        log_path="logs/train_X_20260824_120000.log",
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "训练失败" in out
+    assert "1" in out  # returncode shown
+    assert "logs/train_X_20260824_120000.log" in out
