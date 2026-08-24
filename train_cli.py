@@ -82,3 +82,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="删除已有 checkpoint，从头训练（透传给 train_file.py）",
     )
     return parser.parse_args(argv)
+
+
+def resolve_data_dir(args: argparse.Namespace) -> str:
+    """Resolve data directory with priority: --data-dir > env > default."""
+    if args.data_dir:
+        return args.data_dir
+    return os.environ.get(ENV_DATA_DIR, DEFAULT_DATA_DIR)
+
+
+def build_parquet_filename(symbol: str, timeframe: str) -> str:
+    """Build parquet filename: `{symbol}_{timeframe}.parquet`."""
+    return f"{symbol}_{timeframe}.parquet"
+
+
+def safe_symbol_tag(symbol: str) -> str:
+    """Replace dots with underscores (matches web/progress.py:_safe_symbol_tag)."""
+    return symbol.replace(".", "_")
+
+
+def format_duration(seconds: int | None) -> str:
+    """Format seconds as 'Hh Mm Ss'. Negative or None → '0h 00m 00s'."""
+    if seconds is None or seconds < 0:
+        seconds = 0
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}h {m:02d}m {s:02d}s"

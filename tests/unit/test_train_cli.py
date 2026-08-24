@@ -55,3 +55,54 @@ def test_parse_args_help_exits() -> None:
     with pytest.raises(SystemExit) as exc_info:
         train_cli.parse_args(["--help"])
     assert exc_info.value.code == 0
+
+
+def test_resolve_data_dir_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALPHAMASTER_DATA_DIR", raising=False)
+    args = argparse.Namespace(data_dir=None)
+    assert train_cli.resolve_data_dir(args) == train_cli.DEFAULT_DATA_DIR
+
+
+def test_resolve_data_dir_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALPHAMASTER_DATA_DIR", "/env/data")
+    args = argparse.Namespace(data_dir=None)
+    assert train_cli.resolve_data_dir(args) == "/env/data"
+
+
+def test_resolve_data_dir_cli_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALPHAMASTER_DATA_DIR", "/env/data")
+    args = argparse.Namespace(data_dir="/cli/data")
+    assert train_cli.resolve_data_dir(args) == "/cli/data"
+
+
+def test_build_parquet_filename_basic() -> None:
+    assert train_cli.build_parquet_filename("600519.SH", "H1") == "600519.SH_H1.parquet"
+
+
+def test_build_parquet_filename_no_dot() -> None:
+    assert train_cli.build_parquet_filename("XAUUSD", "M5") == "XAUUSD_M5.parquet"
+
+
+def test_safe_symbol_tag_replaces_dots() -> None:
+    assert train_cli.safe_symbol_tag("US100.cash") == "US100_cash"
+
+
+def test_safe_symbol_tag_no_op() -> None:
+    assert train_cli.safe_symbol_tag("BTCUSDT") == "BTCUSDT"
+
+
+def test_format_duration_hms() -> None:
+    # 8132 seconds = 2h 15m 32s
+    assert train_cli.format_duration(8132) == "2h 15m 32s"
+
+
+def test_format_duration_seconds_only() -> None:
+    assert train_cli.format_duration(45) == "0h 00m 45s"
+
+
+def test_format_duration_zero() -> None:
+    assert train_cli.format_duration(0) == "0h 00m 00s"
+
+
+def test_format_duration_negative_returns_zero() -> None:
+    assert train_cli.format_duration(-100) == "0h 00m 00s"
