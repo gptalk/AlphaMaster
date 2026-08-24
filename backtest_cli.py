@@ -299,38 +299,54 @@ def run_backtest_subprocess(
     env["PYTHONUTF8"] = "1"
     env["LOGURU_COLORIZE"] = "0"
 
-    # Phase labels keyed by phase id (mirrors BACKTEST_PHASES order from web).
+    # Phase labels keyed by phase id (mirrors BACKTEST_PHASES mapping).
     _PHASE_LABELS = {p[0]: p[1] for p in BACKTEST_PHASES}
 
     accumulated: list[str] = []
     last_phase = "init"
 
-    with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
-        process = subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=1,
-            text=True,
-        )
-        assert process.stdout is not None
+    process = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+        text=True,
+    )
+    if process.stdout is None:
+        raise RuntimeError("subprocess stdout pipe is unexpectedly None")
+    try:
         try:
-            for line in process.stdout:
-                log_fp.write(line)
-                log_fp.flush()
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                accumulated.append(line)
-                phase = detect_backtest_phase("".join(accumulated))
-                if phase != last_phase:
-                    last_phase = phase
-                    print_phase_transition(
-                        phase_key=phase,
-                        phase_label=_PHASE_LABELS.get(phase, phase),
-                    )
+            with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
+                for line in process.stdout:
+                    log_fp.write(line)
+                    log_fp.flush()
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    accumulated.append(line)
+                    phase = detect_backtest_phase("".join(accumulated))
+                    if phase != last_phase:
+                        last_phase = phase
+                        print_phase_transition(
+                            phase_key=phase,
+                            phase_label=_PHASE_LABELS.get(phase, phase),
+                        )
         finally:
             process.stdout.close()
+            # Always reap the child: if anything raised mid-loop, terminate + kill.
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
         returncode = process.wait()
+    except Exception:
+        # Best-effort: ensure child is gone before propagating.
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        raise
     return int(returncode)
