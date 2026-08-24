@@ -215,7 +215,7 @@ def print_phase_transition(
     """Print a phase transition line."""
     if file is None:
         file = sys.stdout
-    file.write(f"{ANSI_DIM}[阶段]{ANSI_RESET} {ANSI_BOLD}{phase_label}{ANSI_RESET}\n")
+    file.write(f"{ANSI_DIM}[阶段:{phase_key}]{ANSI_RESET} {ANSI_BOLD}{phase_label}{ANSI_RESET}\n")
     file.flush()
 
 

@@ -228,8 +228,9 @@ def test_print_phase_transition_basic() -> None:
     buf = io.StringIO()
     backtest_cli.print_phase_transition(phase_key="compute", phase_label="回测计算", file=buf)
     out = buf.getvalue()
-    assert "compute" in out or "回测计算" in out
-    assert "[阶段]" in out
+    assert "compute" in out
+    assert "回测计算" in out
+    assert "[阶段" in out
 
 
 def test_print_summary_banner_success_contains_fields() -> None:
