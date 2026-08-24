@@ -90,3 +90,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"单边滑点 %%（默认从 web_settings.json 读，否则 {DEFAULT_SLIPPAGE_PCT}）",
     )
     return parser.parse_args(argv)
+
+
+def resolve_data_file(args: argparse.Namespace, strategy_info: dict[str, Any]) -> str | None:
+    """Resolve data file: CLI > strategy.data_file > None."""
+    if args.data_file:
+        return args.data_file
+    return strategy_info.get("data_file")
+
+
+def merge_cost_settings(args: argparse.Namespace, settings: dict[str, Any]) -> dict[str, float]:
+    """Resolve cost: CLI > settings > defaults."""
+    return {
+        "commission": (
+            args.commission
+            if args.commission is not None
+            else settings.get("bt_commission_pct", DEFAULT_COMMISSION_PCT)
+        ),
+        "slippage": (
+            args.slippage
+            if args.slippage is not None
+            else settings.get("bt_slippage_pct", DEFAULT_SLIPPAGE_PCT)
+        ),
+    }
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)

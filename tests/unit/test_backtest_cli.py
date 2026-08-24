@@ -50,3 +50,49 @@ def test_parse_args_help_exits() -> None:
     with pytest.raises(SystemExit) as exc_info:
         backtest_cli.parse_args(["--help"])
     assert exc_info.value.code == 0
+
+
+def test_resolve_data_file_cli_wins() -> None:
+    args = argparse.Namespace(data_file="/cli/data.parquet")
+    strategy_info = {"data_file": "/strategy/data.parquet"}
+    assert backtest_cli.resolve_data_file(args, strategy_info) == "/cli/data.parquet"
+
+
+def test_resolve_data_file_falls_back_to_strategy() -> None:
+    args = argparse.Namespace(data_file=None)
+    strategy_info = {"data_file": "/strategy/data.parquet"}
+    assert backtest_cli.resolve_data_file(args, strategy_info) == "/strategy/data.parquet"
+
+
+def test_resolve_data_file_no_source_returns_none() -> None:
+    args = argparse.Namespace(data_file=None)
+    strategy_info = {}  # no data_file field
+    assert backtest_cli.resolve_data_file(args, strategy_info) is None
+
+
+def test_merge_cost_settings_cli_wins() -> None:
+    args = argparse.Namespace(commission=0.05, slippage=0.03)
+    settings = {"bt_commission_pct": 0.02, "bt_slippage_pct": 0.01}
+    result = backtest_cli.merge_cost_settings(args, settings)
+    assert result == {"commission": 0.05, "slippage": 0.03}
+
+
+def test_merge_cost_settings_falls_back_to_settings() -> None:
+    args = argparse.Namespace(commission=None, slippage=None)
+    settings = {"bt_commission_pct": 0.03, "bt_slippage_pct": 0.02}
+    result = backtest_cli.merge_cost_settings(args, settings)
+    assert result == {"commission": 0.03, "slippage": 0.02}
+
+
+def test_merge_cost_settings_falls_back_to_defaults() -> None:
+    args = argparse.Namespace(commission=None, slippage=None)
+    settings = {}  # no cost fields
+    result = backtest_cli.merge_cost_settings(args, settings)
+    assert result == {"commission": backtest_cli.DEFAULT_COMMISSION_PCT, "slippage": backtest_cli.DEFAULT_SLIPPAGE_PCT}
+
+
+def test_now_utc_default_returns_current_time() -> None:
+    before = datetime.now(timezone.utc)
+    result = backtest_cli._now_utc()
+    after = datetime.now(timezone.utc)
+    assert before <= result <= after
