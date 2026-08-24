@@ -208,3 +208,46 @@ def test_print_summary_banner_success_contains_fields() -> None:
     assert "分析完成" in out
     assert "deepseek-v4-flash" in out
     assert "28" in out  # seconds
+
+
+def test_stream_ai_answer_writes_deltas_immediately(capsys: pytest.CaptureFixture) -> None:
+    """Each delta event should be written + flushed to stdout."""
+    events = iter([
+        {"type": "meta", "provider": "p", "model": "m"},
+        {"type": "delta", "text": "Hello, "},
+        {"type": "delta", "text": "world!"},
+        {"type": "done", "provider": "p", "model": "m"},
+    ])
+    answer = analyze_cli.stream_ai_answer(events)
+    assert answer == "Hello, world!"
+    captured = capsys.readouterr()
+    assert "Hello, " in captured.out
+    assert "world!" in captured.out
+
+
+def test_stream_ai_answer_handles_error_event() -> None:
+    """An error event should raise RuntimeError with the error message."""
+    events = iter([
+        {"type": "meta", "provider": "p", "model": "m"},
+        {"type": "error", "message": "rate limited"},
+    ])
+    with pytest.raises(RuntimeError, match="rate limited"):
+        analyze_cli.stream_ai_answer(events)
+
+
+def test_stream_ai_answer_ignores_unknown_event_types() -> None:
+    events = iter([
+        {"type": "meta", "provider": "p", "model": "m"},
+        {"type": "weird_event", "data": "ignored"},
+        {"type": "delta", "text": "ok"},
+        {"type": "done", "provider": "p", "model": "m"},
+    ])
+    answer = analyze_cli.stream_ai_answer(events)
+    assert answer == "ok"
+
+
+def test_now_utc_default_returns_current_time() -> None:
+    before = datetime.now(timezone.utc)
+    result = analyze_cli._now_utc()
+    after = datetime.now(timezone.utc)
+    assert before <= result <= after

@@ -166,3 +166,39 @@ def print_summary_banner(
     )
     file.write(sep + "\n\n")
     file.flush()
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def stream_ai_answer(events, file=None) -> str:
+    """Consume analyze_training_stream events; print deltas to file; return full answer.
+
+    Raises RuntimeError on any 'error' event or on 'done' with empty answer.
+
+    Note: default of None (resolved to sys.stdout at call time) so that pytest's
+    capsys/capfd fixtures can intercept writes — capturing `sys.stdout` directly
+    as the default would bind it at module-load time, before pytest patches stdout.
+    """
+    if file is None:
+        file = sys.stdout
+    parts: list[str] = []
+    for event in events:
+        etype = event.get("type")
+        if etype == "meta":
+            continue
+        if etype == "delta":
+            text = event.get("text") or ""
+            parts.append(text)
+            file.write(text)
+            file.flush()
+        elif etype == "error":
+            msg = event.get("message") or "分析失败"
+            raise RuntimeError(msg)
+        elif etype == "done":
+            answer = event.get("answer") or "".join(parts)
+            if not answer.strip():
+                raise RuntimeError("AI 返回内容为空")
+            return answer
+    raise RuntimeError("AI 流式分析未正常结束")
