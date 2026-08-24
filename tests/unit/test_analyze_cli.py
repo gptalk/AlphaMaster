@@ -309,12 +309,6 @@ def test_main_happy_path_streams_and_exits_0(
         "best_score": 5.5, "strategy_score": 5.5, "formula_decoded": "alpha → close",
     }
     monkeypatch.setattr("analyze_cli.build_cli_snapshot", lambda *a, **kw: fake_snapshot)
-    monkeypatch.setattr(
-        "analyze_cli.resolve_provider",
-        lambda provider, api_key, base_url=None, model=None: type("P", (), {
-            "provider": provider, "model": model, "label": provider,
-        })(),
-    )
     fake_events = iter([
         {"type": "meta", "provider": "deepseek", "model": "deepseek-v4-flash"},
         {"type": "delta", "text": "AI 回答 "},
@@ -333,6 +327,8 @@ def test_main_happy_path_streams_and_exits_0(
     assert "AI 分析" in captured.out  # snapshot banner
     assert "AI 回答 流式" in captured.out
     assert "分析完成" in captured.out
+    # Verify ordering: deltas print BEFORE summary banner
+    assert captured.out.index("AI 回答 流式") < captured.out.index("分析完成")
 
 
 def test_main_ai_error_exits_1(
@@ -343,10 +339,6 @@ def test_main_ai_error_exits_1(
     monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
     monkeypatch.setattr("analyze_cli.load_settings", lambda: {"ai_api_key": "test-key"})
     monkeypatch.setattr("analyze_cli.build_cli_snapshot", lambda *a, **kw: {"symbol": "FAKE", "timeframe": "H1"})
-    monkeypatch.setattr(
-        "analyze_cli.resolve_provider",
-        lambda **kw: type("P", (), {"provider": "p", "model": "m", "label": "p"})(),
-    )
     monkeypatch.setattr(
         "analyze_cli.analyze_training_stream",
         lambda **kw: iter([

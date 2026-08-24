@@ -10,10 +10,7 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -25,8 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Forward-looking imports — used by main(). Kept at module top level so tests can
 # `monkeypatch.setattr("analyze_cli.analyze_training_stream", ...)`.
-from web.ai_analyze import analyze_training_stream, build_training_snapshot  # noqa: E402
-from web.ai_providers import resolve_provider  # noqa: E402
+from web.ai_analyze import analyze_training_stream, build_training_snapshot, load_prior_analyses  # noqa: E402
 from web.settings import load_settings  # noqa: E402
 
 
@@ -228,8 +224,8 @@ def main(argv: list[str] | None = None) -> None:
         print("        请确认已运行过 python train_cli.py SYMBOL TIMEFRAME 完成训练。", file=sys.stderr)
         sys.exit(2)
 
-    # ── Prior count (placeholder; future: web.ai_analyze.load_prior_analyses) ──
-    prior_count = 0
+    # ── Prior count from history ──
+    prior_count = len(load_prior_analyses(args.symbol, args.timeframe))
 
     # ── Snapshot banner ──
     print_snapshot_banner(
