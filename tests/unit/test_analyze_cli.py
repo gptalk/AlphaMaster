@@ -258,3 +258,101 @@ def test_now_utc_default_returns_current_time() -> None:
     result = analyze_cli._now_utc()
     after = datetime.now(timezone.utc)
     assert before <= result <= after
+
+
+# ─────────────────────────────────────────────────────────────────────
+# main() orchestrator tests
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_main_missing_api_key_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """When api_key is empty, main should exit 2 with a clear message."""
+    monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
+    # Empty settings → no api_key anywhere
+    monkeypatch.setattr("analyze_cli.load_settings", lambda: {})
+    with pytest.raises(SystemExit) as exc_info:
+        analyze_cli.main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "API key" in captured.out or "api_key" in captured.out or "API key" in captured.err
+
+
+def test_main_snapshot_builder_fails_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """If build_cli_snapshot raises (e.g., no training history), main should exit 2."""
+    monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
+    monkeypatch.setattr("analyze_cli.load_settings", lambda: {"ai_api_key": "test-key"})
+    monkeypatch.setattr(
+        "analyze_cli.build_cli_snapshot",
+        lambda *a, **kw: (_ for _ in ()).throw(ValueError("未找到训练历史")),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        analyze_cli.main()
+    assert exc_info.value.code == 2
+
+
+def test_main_happy_path_streams_and_exits_0(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Full monkeypatch-driven happy path: snapshot + provider + stream + done."""
+    monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
+    monkeypatch.setattr("analyze_cli.load_settings", lambda: {"ai_api_key": "test-key"})
+    fake_snapshot = {
+        "symbol": "FAKE", "timeframe": "H1",
+        "current_step": 1000, "train_steps": 5000, "progress_pct": 20.0,
+        "best_score": 5.5, "strategy_score": 5.5, "formula_decoded": "alpha → close",
+    }
+    monkeypatch.setattr("analyze_cli.build_cli_snapshot", lambda *a, **kw: fake_snapshot)
+    monkeypatch.setattr(
+        "analyze_cli.resolve_provider",
+        lambda provider, api_key, base_url=None, model=None: type("P", (), {
+            "provider": provider, "model": model, "label": provider,
+        })(),
+    )
+    fake_events = iter([
+        {"type": "meta", "provider": "deepseek", "model": "deepseek-v4-flash"},
+        {"type": "delta", "text": "AI 回答 "},
+        {"type": "delta", "text": "流式"},
+        {"type": "done", "provider": "deepseek", "model": "deepseek-v4-flash", "answer": "AI 回答 流式"},
+    ])
+    monkeypatch.setattr(
+        "analyze_cli.analyze_training_stream",
+        lambda **kw: fake_events,
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        analyze_cli.main()
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "FAKE" in captured.out
+    assert "AI 分析" in captured.out  # snapshot banner
+    assert "AI 回答 流式" in captured.out
+    assert "分析完成" in captured.out
+
+
+def test_main_ai_error_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """If analyze_training_stream raises, main should exit 1."""
+    monkeypatch.setattr(sys, "argv", ["analyze_cli.py", "FAKE", "H1"])
+    monkeypatch.setattr("analyze_cli.load_settings", lambda: {"ai_api_key": "test-key"})
+    monkeypatch.setattr("analyze_cli.build_cli_snapshot", lambda *a, **kw: {"symbol": "FAKE", "timeframe": "H1"})
+    monkeypatch.setattr(
+        "analyze_cli.resolve_provider",
+        lambda **kw: type("P", (), {"provider": "p", "model": "m", "label": "p"})(),
+    )
+    monkeypatch.setattr(
+        "analyze_cli.analyze_training_stream",
+        lambda **kw: iter([
+            {"type": "error", "message": "网络超时"},
+        ]),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        analyze_cli.main()
+    assert exc_info.value.code == 1

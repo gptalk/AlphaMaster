@@ -202,3 +202,73 @@ def stream_ai_answer(events: Iterator[dict[str, Any]], file=None) -> str:
                 raise RuntimeError("AI 返回内容为空")
             return answer
     raise RuntimeError("AI 流式分析未正常结束")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Orchestrator
+# ─────────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point. Exits with 0 (success), 1 (AI call failed), or 2 (bad config)."""
+    args = parse_args(argv)
+    settings = load_settings()
+    cfg = _merge_settings(args, settings)
+
+    if not cfg["api_key"]:
+        print("[错误] 缺少 API key。", file=sys.stderr)
+        print("        在 web_settings.json 的 ai_api_key 字段配置，或加 --api-key 参数。", file=sys.stderr)
+        sys.exit(2)
+
+    # ── Build snapshot ──
+    try:
+        snapshot = build_cli_snapshot(args.symbol, args.timeframe)
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[错误] 构造训练快照失败: {e}", file=sys.stderr)
+        print("        请确认已运行过 python train_cli.py SYMBOL TIMEFRAME 完成训练。", file=sys.stderr)
+        sys.exit(2)
+
+    # ── Prior count (placeholder; future: web.ai_analyze.load_prior_analyses) ──
+    prior_count = 0
+
+    # ── Snapshot banner ──
+    print_snapshot_banner(
+        snapshot=snapshot,
+        prior_count=prior_count,
+        provider=cfg["provider"],
+        model=cfg["model"],
+        file=sys.stdout,
+    )
+
+    # ── Stream AI answer ──
+    print("\n[AI 分析中...]\n", flush=True)
+    started_at = _now_utc()
+
+    try:
+        events = analyze_training_stream(
+            provider=cfg["provider"],
+            api_key=cfg["api_key"],
+            base_url=cfg["base_url"],
+            model=cfg["model"],
+            symbol=args.symbol,
+        )
+        answer = stream_ai_answer(events, file=sys.stdout)
+    except RuntimeError as e:
+        print(f"\n[错误] AI 分析失败: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    finished_at = _now_utc()
+    elapsed = int((finished_at - started_at).total_seconds())
+
+    # ── Summary banner ──
+    print_summary_banner(
+        meta={"provider": cfg["provider"], "model": cfg["model"]},
+        elapsed_seconds=elapsed,
+        file=sys.stdout,
+    )
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
