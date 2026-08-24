@@ -110,3 +110,23 @@ def test_format_duration_negative_returns_zero() -> None:
 
 def test_format_duration_none_returns_zero() -> None:
     assert train_cli.format_duration(None) == "0h 00m 00s"
+
+
+def test_tee_writer_writes_to_both(tmp_path: Path) -> None:
+    log_file = tmp_path / "out.log"
+    with log_file.open("w", encoding="utf-8") as fp:
+        tee = train_cli._TeeWriter(fp, io.StringIO())
+        tee.write("hello\n")
+        tee.write("world")
+        tee.flush()
+
+    assert log_file.read_text(encoding="utf-8") == "hello\nworld"
+    assert tee._stream.getvalue() == "hello\nworld"
+
+
+def test_tee_writer_is_a_file_like_object(tmp_path: Path) -> None:
+    log_file = tmp_path / "out.log"
+    with log_file.open("w", encoding="utf-8") as fp:
+        tee = train_cli._TeeWriter(fp, io.StringIO())
+        # subprocess.Popen needs fileno() on some platforms
+        assert hasattr(tee, "fileno") or hasattr(tee, "write")

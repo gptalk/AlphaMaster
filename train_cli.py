@@ -108,3 +108,36 @@ def format_duration(seconds: int | None) -> str:
     h, rem = divmod(int(seconds), 3600)
     m, s = divmod(rem, 60)
     return f"{h}h {m:02d}m {s:02d}s"
+
+
+class _TeeWriter:
+    """File-like object that writes to two underlying streams.
+
+    Used to tee subprocess stdout to both the terminal (so tqdm is visible)
+    and a log file (so users can `tail -f` or review after the fact).
+    """
+
+    def __init__(self, primary, secondary) -> None:
+        self._primary = primary
+        self._stream = secondary
+
+    def write(self, data: str) -> int:
+        n1 = self._primary.write(data)
+        n2 = self._stream.write(data)
+        return max(n1, n2)
+
+    def flush(self) -> None:
+        self._primary.flush()
+        if hasattr(self._stream, "flush"):
+            self._stream.flush()
+
+    def fileno(self) -> int:
+        # subprocess.Popen may call fileno() to set O_NONBLOCK; delegate.
+        return self._primary.fileno()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._stream, "isatty", lambda: False)())
+
+    def close(self) -> None:
+        # Don't close — the owner closes the underlying file/stream.
+        pass
