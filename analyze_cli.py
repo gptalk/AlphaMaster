@@ -130,7 +130,7 @@ def print_snapshot_banner(
     file.write(f"  {ANSI_CYAN_BOLD}AI 分析{ANSI_RESET} — {ANSI_BOLD}{symbol} {timeframe}{ANSI_RESET}\n")
     file.write(sep + "\n")
 
-    if current_step is not None and train_steps:
+    if current_step is not None and train_steps and snapshot.get("progress_pct") is not None:
         file.write(f"  训练进度:  {ANSI_BOLD}{current_step:,} /{train_steps:,}{ANSI_RESET} ({snapshot.get('progress_pct', 0):.1f}%)\n")
     else:
         file.write(f"  训练进度:  {ANSI_DIM}N/A{ANSI_RESET}\n")
@@ -158,7 +158,6 @@ def print_summary_banner(
     file=sys.stdout,
 ) -> None:
     """Print the summary banner after AI analysis completes."""
-    provider = meta.get("provider", "?")
     model = meta.get("model", "?")
     sep = "─" * RULE_WIDTH
     file.write("\n" + sep + "\n")
