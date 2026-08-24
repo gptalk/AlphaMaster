@@ -107,3 +107,63 @@ def _merge_settings(args: argparse.Namespace, settings: dict[str, Any]) -> dict[
 def build_cli_snapshot(symbol: str, timeframe: str) -> dict[str, Any]:
     """Build a training snapshot for the given (symbol, timeframe). Thin wrapper over web's build_training_snapshot."""
     return build_training_snapshot(symbol, timeframe)
+
+
+def print_snapshot_banner(
+    *,
+    snapshot: dict[str, Any],
+    prior_count: int,
+    provider: str,
+    model: str,
+    file=sys.stdout,
+) -> None:
+    """Print the colored snapshot banner showing what the AI will see."""
+    symbol = snapshot.get("symbol", "?")
+    timeframe = snapshot.get("timeframe", "?")
+    current_step = snapshot.get("current_step")
+    train_steps = snapshot.get("train_steps")
+    best_score = snapshot.get("best_score")
+    formula_decoded = snapshot.get("formula_decoded")
+
+    sep = "═" * LINE_WIDTH
+    file.write(sep + "\n")
+    file.write(f"  {ANSI_CYAN_BOLD}AI 分析{ANSI_RESET} — {ANSI_BOLD}{symbol} {timeframe}{ANSI_RESET}\n")
+    file.write(sep + "\n")
+
+    if current_step is not None and train_steps:
+        file.write(f"  训练进度:  {ANSI_BOLD}{current_step:,} /{train_steps:,}{ANSI_RESET} ({snapshot.get('progress_pct', 0):.1f}%)\n")
+    else:
+        file.write(f"  训练进度:  {ANSI_DIM}N/A{ANSI_RESET}\n")
+
+    if best_score is not None:
+        file.write(f"  最优分数:  {ANSI_YELLOW_BOLD}{best_score:.3f}{ANSI_RESET}\n")
+    else:
+        file.write(f"  最优分数:  {ANSI_DIM}N/A{ANSI_RESET}\n")
+
+    if formula_decoded:
+        file.write(f"  最新公式:  {ANSI_CYAN}{formula_decoded}{ANSI_RESET}\n")
+    else:
+        file.write(f"  最新公式:  {ANSI_DIM}N/A{ANSI_RESET}\n")
+
+    file.write(f"  历史分析:  {prior_count} 次（同品种同周期）\n")
+    file.write(f"  Provider:  {provider} · {model}\n")
+    file.write(sep + "\n\n")
+    file.flush()
+
+
+def print_summary_banner(
+    *,
+    meta: dict[str, Any],
+    elapsed_seconds: int,
+    file=sys.stdout,
+) -> None:
+    """Print the summary banner after AI analysis completes."""
+    provider = meta.get("provider", "?")
+    model = meta.get("model", "?")
+    sep = "─" * RULE_WIDTH
+    file.write("\n" + sep + "\n")
+    file.write(
+        f"  {ANSI_GREEN_BOLD}✓ 分析完成{ANSI_RESET} ({model} · {elapsed_seconds} 秒)\n"
+    )
+    file.write(sep + "\n\n")
+    file.flush()

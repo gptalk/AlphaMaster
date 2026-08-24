@@ -140,3 +140,71 @@ def test_build_cli_snapshot_basic_shape() -> None:
         result = analyze_cli.build_cli_snapshot("FAKE", "H1")
     assert result is fake_snapshot
     mock.assert_called_once_with("FAKE", "H1")
+
+
+def test_print_snapshot_banner_contains_key_fields() -> None:
+    snapshot = {
+        "symbol": "600519.SH",
+        "timeframe": "H1",
+        "current_step": 4500,
+        "train_steps": 9000,
+        "best_score": 10.245,
+        "strategy_score": 10.245,
+        "val_score": 2.83,  # may or may not appear depending on impl
+        "formula_decoded": "alpha → close → ts_mean(5)",
+        "progress_pct": 50.0,
+    }
+    buf = io.StringIO()
+    analyze_cli.print_snapshot_banner(
+        snapshot=snapshot,
+        prior_count=2,
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "600519.SH" in out
+    assert "H1" in out
+    assert "4,500" in out  # current_step formatted
+    assert "9,000" in out  # train_steps formatted
+    assert "10.245" in out
+    assert "alpha → close → ts_mean(5)" in out
+    assert "deepseek" in out
+    assert "deepseek-v4-flash" in out
+    assert "2 次" in out  # prior_count
+
+
+def test_print_snapshot_banner_handles_none_progress() -> None:
+    snapshot = {
+        "symbol": "X",
+        "timeframe": "H1",
+        "current_step": None,
+        "train_steps": None,
+        "best_score": None,
+        "formula_decoded": None,
+        "progress_pct": None,
+    }
+    buf = io.StringIO()
+    analyze_cli.print_snapshot_banner(
+        snapshot=snapshot,
+        prior_count=0,
+        provider="openclaw",
+        model="claude",
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "N/A" in out
+
+
+def test_print_summary_banner_success_contains_fields() -> None:
+    meta = {"provider": "deepseek", "model": "deepseek-v4-flash"}
+    buf = io.StringIO()
+    analyze_cli.print_summary_banner(
+        meta=meta,
+        elapsed_seconds=28,
+        file=buf,
+    )
+    out = buf.getvalue()
+    assert "分析完成" in out
+    assert "deepseek-v4-flash" in out
+    assert "28" in out  # seconds
