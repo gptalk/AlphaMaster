@@ -106,3 +106,7 @@ def test_format_duration_zero() -> None:
 
 def test_format_duration_negative_returns_zero() -> None:
     assert train_cli.format_duration(-100) == "0h 00m 00s"
+
+
+def test_format_duration_none_returns_zero() -> None:
+    assert train_cli.format_duration(None) == "0h 00m 00s"
