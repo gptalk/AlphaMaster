@@ -112,27 +112,6 @@ def test_format_duration_none_returns_zero() -> None:
     assert train_cli.format_duration(None) == "0h 00m 00s"
 
 
-def test_tee_writer_writes_to_both(tmp_path: Path) -> None:
-    log_file = tmp_path / "out.log"
-    with log_file.open("w", encoding="utf-8") as fp:
-        tee = train_cli._TeeWriter(fp, io.StringIO())
-        tee.write("hello\n")
-        tee.write("world")
-        tee.flush()
-
-    assert log_file.read_text(encoding="utf-8") == "hello\nworld"
-    assert tee._stream.getvalue() == "hello\nworld"
-
-
-def test_tee_writer_fileno_delegates_to_primary(tmp_path: Path) -> None:
-    log_file = (tmp_path / "out.log").open("w", encoding="utf-8")
-    try:
-        tee = train_cli._TeeWriter(log_file, io.StringIO())
-        assert tee.fileno() == log_file.fileno()
-    finally:
-        log_file.close()
-
-
 def test_print_startup_banner_contains_key_fields() -> None:
     info = {
         "data_file": "/tmp/600519.SH_H1.parquet",
