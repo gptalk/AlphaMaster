@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -381,6 +382,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(2)
     except ValueError as e:
         print(f"[错误] 数据文件无效: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"[错误] 数据文件读取失败: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
     target_steps = _train_steps()

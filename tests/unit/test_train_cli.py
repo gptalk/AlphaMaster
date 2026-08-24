@@ -296,6 +296,26 @@ def test_main_missing_data_file_exits_2(tmp_path: Path, monkeypatch: pytest.Monk
     assert "不存在" in captured.out or "不存在" in captured.err
 
 
+def test_main_inspect_parquet_generic_error_exits_1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Unexpected exception from inspect_parquet_file should produce clean error + exit 1."""
+    monkeypatch.setattr(sys, "argv", ["train_cli.py", "FAKE", "H1"])
+    monkeypatch.setenv("ALPHAMASTER_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        "train_cli.inspect_parquet_file",
+        lambda _path: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        train_cli.main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "数据文件读取失败" in captured.err
+    assert "boom" in captured.err
+
+
 def test_main_happy_path_exits_0(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
