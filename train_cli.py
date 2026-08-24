@@ -329,8 +329,19 @@ def _record_session(*, symbol: str, started_at: datetime, finished_at: datetime,
     )
 
 
-def _get_time_summary(symbol: str, **_kw: Any):
+def _get_time_summary(symbol: str):
     return get_training_time_summary(symbol)
+
+
+def _last_float(history: dict[str, Any], key: str) -> float | None:
+    """Return the last element of history[key] coerced to float, or None on error."""
+    try:
+        values = history.get(key) or []
+        if values:
+            return float(values[-1])
+    except (TypeError, ValueError):
+        return None
+    return None
 
 
 def _history_session_count(symbol: str) -> int:
@@ -401,7 +412,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # ── Run training ──
     session_seconds = 0
-    returncode = 0
+    returncode = -1
     try:
         returncode = run_training_subprocess(
             cmd=cmd,
@@ -419,7 +430,7 @@ def main(argv: list[str] | None = None) -> None:
                     finished_at=finished_at,
                     log_path=str(log_path),
                 )
-            except Exception as e:
+            except (OSError, TypeError, AttributeError) as e:
                 print(f"[警告] 写入训练时长记录失败: {e}", file=sys.stderr)
 
     success = returncode == 0
@@ -434,25 +445,12 @@ def main(argv: list[str] | None = None) -> None:
         try:
             summary = _get_time_summary(symbol)
             history_total = int(getattr(summary, "history_total_seconds", 0) or 0)
-        except Exception:
+        except (OSError, TypeError, AttributeError):
             history_total = 0
         history_session_count = _history_session_count(symbol)
 
-    best_score = None
-    val_score = None
-    if success:
-        try:
-            bests = history.get("best_score") or []
-            if bests:
-                best_score = float(bests[-1])
-        except (TypeError, ValueError):
-            best_score = None
-        try:
-            vals = history.get("val_score") or []
-            if vals:
-                val_score = float(vals[-1])
-        except (TypeError, ValueError):
-            val_score = None
+    best_score = _last_float(history, "best_score") if success else None
+    val_score = _last_float(history, "val_score") if success else None
 
     current_step = _current_step_from_history(symbol) if success else None
     formula_decoded = strategy.get("formula_decoded") if success else None

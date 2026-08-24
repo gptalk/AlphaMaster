@@ -255,6 +255,14 @@ def test_print_summary_banner_failure() -> None:
     assert "logs/train_X_20260824_120000.log" in out
 
 
+def test_now_utc_default_returns_current_time() -> None:
+    """_now_utc returns a datetime close to now (sanity check on the seam)."""
+    before = datetime.now(timezone.utc)
+    result = train_cli._now_utc()
+    after = datetime.now(timezone.utc)
+    assert before <= result <= after
+
+
 def test_run_training_subprocess_returns_zero_on_success(tmp_path: Path) -> None:
     """A trivial script that exits 0 should return 0."""
     log_path = tmp_path / "out.log"
