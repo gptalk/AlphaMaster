@@ -350,3 +350,102 @@ def run_backtest_subprocess(
             process.wait()
         raise
     return int(returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Orchestrator
+# ─────────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point. Exits with 0 (success), 1 (backtest failed), or 2 (bad config)."""
+    args = parse_args(argv)
+    settings = load_settings()
+    costs = merge_cost_settings(args, settings)
+
+    # ── Validate strategy file ──
+    try:
+        strategy_info = inspect_strategy_file(args.strategy_file)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[错误] 策略文件无效: {e}", file=sys.stderr)
+        print(f"        请检查 --strategy-file 参数: {args.strategy_file}", file=sys.stderr)
+        sys.exit(2)
+
+    # Strategy_info may not contain data_file — add it from args for the banner.
+    strategy_info.setdefault("strategy_file", args.strategy_file)
+
+    data_file = resolve_data_file(args, strategy_info)
+    if not data_file:
+        print("[错误] 无法确定数据文件路径。", file=sys.stderr)
+        print("        策略 JSON 缺 data_file 字段，且 CLI 未提供 --data-file。", file=sys.stderr)
+        sys.exit(2)
+
+    # ── Build subprocess command ──
+    started_at = _now_utc()
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_filename = f"backtest_{started_at.strftime('%Y%m%d_%H%M%S')}.log"
+    log_path = log_dir / log_filename
+    rel_log_path = str(log_path.relative_to(PROJECT_ROOT)).replace("\\", "/")
+
+    cmd = [
+        sys.executable,
+        "-u",
+        "run_backtest.py",
+        "--strategy-file",
+        args.strategy_file,
+        "--data-file",
+        data_file,
+        "--commission",
+        str(costs["commission"]),
+        "--slippage",
+        str(costs["slippage"]),
+    ]
+
+    # ── Startup banner ──
+    print_startup_banner(
+        strategy_info=strategy_info,
+        data_file=data_file,
+        commission=costs["commission"],
+        slippage=costs["slippage"],
+        output_dir="backtest_output/",
+        log_path=rel_log_path,
+        file=sys.stdout,
+    )
+
+    # ── Run subprocess (with phase tracking) ──
+    returncode = 1
+    try:
+        returncode = run_backtest_subprocess(
+            cmd=cmd,
+            log_path=log_path,
+            cwd=PROJECT_ROOT,
+        )
+    finally:
+        finished_at = _now_utc()
+        elapsed = int((finished_at - started_at).total_seconds())
+
+    if returncode != 0:
+        print(f"\n[错误] 回测子进程退出码 {returncode}", file=sys.stderr)
+        print(f"        详细日志: {rel_log_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # ── Read final report ──
+    report = read_final_report(str(REPORT_PATH))
+    if report is None:
+        print(f"[错误] 回测报告未生成: {REPORT_PATH}", file=sys.stderr)
+        sys.exit(1)
+
+    # ── Summary banner ──
+    print_summary_banner(
+        report=report,
+        elapsed_seconds=elapsed,
+        output_dir="backtest_output/",
+        file=sys.stdout,
+    )
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

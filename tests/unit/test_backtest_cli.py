@@ -324,3 +324,128 @@ def test_run_backtest_subprocess_emits_phase_transitions(
     # Each phase label should appear (cost → strategy → data → compute → chart → done).
     for label in ["交易成本", "加载各品种策略", "正在加载数据", "完成"]:
         assert label in captured.out, f"missing phase: {label}"
+
+
+def test_main_missing_strategy_file_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Argparse enforces --strategy-file; missing it exits 2."""
+    monkeypatch.setattr(sys, "argv", ["backtest_cli.py"])  # no --strategy-file
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 2
+
+
+def test_main_strategy_file_missing_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        sys, "argv", ["backtest_cli.py", "--strategy-file", "/nonexistent.json"]
+    )
+    monkeypatch.setattr("backtest_cli.load_settings", lambda: {})
+    monkeypatch.setattr(
+        "backtest_cli.inspect_strategy_file",
+        lambda _path: (_ for _ in ()).throw(FileNotFoundError("missing")),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 2
+
+
+def test_main_data_file_unresolvable_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["backtest_cli.py", "--strategy-file", "strategies/best_X.json"],
+    )
+    monkeypatch.setattr("backtest_cli.load_settings", lambda: {})
+    monkeypatch.setattr(
+        "backtest_cli.inspect_strategy_file",
+        lambda _path: {"symbol": "X", "timeframe": "H1"},  # no data_file
+    )
+    monkeypatch.setattr(
+        "backtest_cli.resolve_data_file",
+        lambda _args, _info: None,  # can't resolve
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 2
+
+
+def test_main_happy_path_exits_0(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["backtest_cli.py", "--strategy-file", "strategies/best_X.json"],
+    )
+    monkeypatch.setattr("backtest_cli.load_settings", lambda: {})
+    monkeypatch.setattr(
+        "backtest_cli.inspect_strategy_file",
+        lambda _path: {"symbol": "X", "timeframe": "H1", "data_file": "/x.parquet"},
+    )
+    monkeypatch.setattr("backtest_cli.run_backtest_subprocess", lambda **_: 0)
+    monkeypatch.setattr(
+        "backtest_cli.read_final_report",
+        lambda _path: {
+            "mode": "single", "symbols": ["X"],
+            "portfolio": {
+                "total_return": 1.25, "sharpe": 1.5,
+                "sortino": 2.0, "profit_loss_ratio": 3.0,
+            },
+        },
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "X" in captured.out
+    assert "回测完成" in captured.out
+
+
+def test_main_subprocess_fails_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["backtest_cli.py", "--strategy-file", "strategies/best_X.json"],
+    )
+    monkeypatch.setattr("backtest_cli.load_settings", lambda: {})
+    monkeypatch.setattr(
+        "backtest_cli.inspect_strategy_file",
+        lambda _path: {"symbol": "X", "timeframe": "H1", "data_file": "/x.parquet"},
+    )
+    monkeypatch.setattr("backtest_cli.run_backtest_subprocess", lambda **_: 1)
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 1
+
+
+def test_main_missing_report_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["backtest_cli.py", "--strategy-file", "strategies/best_X.json"],
+    )
+    monkeypatch.setattr("backtest_cli.load_settings", lambda: {})
+    monkeypatch.setattr(
+        "backtest_cli.inspect_strategy_file",
+        lambda _path: {"symbol": "X", "timeframe": "H1", "data_file": "/x.parquet"},
+    )
+    monkeypatch.setattr("backtest_cli.run_backtest_subprocess", lambda **_: 0)
+    monkeypatch.setattr("backtest_cli.read_final_report", lambda _path: None)
+    with pytest.raises(SystemExit) as exc_info:
+        backtest_cli.main()
+    assert exc_info.value.code == 1
