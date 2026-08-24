@@ -257,15 +257,15 @@ def run_training_subprocess(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     env["LOGURU_COLORIZE"] = "0"
 
     with log_path.open("w", encoding="utf-8", buffering=1) as log_fp:
         tee = _TeeWriter(log_fp, sys.stdout)
+        # Merge stderr → stdout so both go through the tee (we don't need to color stderr separately)
         result = subprocess.run(
             cmd,
-            cwd=str(cwd),
+            cwd=cwd,
             env=env,
             stdout=tee,
             stderr=subprocess.STDOUT,
