@@ -165,3 +165,112 @@ def read_final_report(report_path: str) -> dict[str, Any] | None:
         "symbols": symbols_list,
         "portfolio": portfolio if isinstance(portfolio, dict) else {},
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Banner printers (I/O — accept `file=...` for testability)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def print_startup_banner(
+    *,
+    strategy_info: dict[str, Any],
+    data_file: str,
+    commission: float,
+    slippage: float,
+    output_dir: str,
+    log_path: str,
+    file=None,
+) -> None:
+    """Print the colored startup banner before the backtest starts."""
+    if file is None:
+        file = sys.stdout
+    symbol = strategy_info.get("symbol", "?")
+    timeframe = strategy_info.get("timeframe", "?")
+    strategy_file = strategy_info.get("strategy_file") or "?"
+
+    sep = "═" * LINE_WIDTH
+    file.write(sep + "\n")
+    file.write(
+        f"  {ANSI_CYAN_BOLD}回测{ANSI_RESET} — {ANSI_BOLD}{Path(strategy_file).name}{ANSI_RESET} "
+        f"({ANSI_BOLD}{symbol} / {timeframe}{ANSI_RESET})\n"
+    )
+    file.write(sep + "\n")
+    file.write(f"  数据文件:  {data_file}\n")
+    file.write(
+        f"  交易成本:  手续费 {commission:g}% + 滑点 {slippage:g}%\n"
+    )
+    file.write(f"  输出目录:  {output_dir}\n")
+    file.write(f"  日志文件:  {log_path}\n")
+    file.write(sep + "\n\n")
+    file.flush()
+
+
+def print_phase_transition(
+    *,
+    phase_key: str,
+    phase_label: str,
+    file=None,
+) -> None:
+    """Print a phase transition line."""
+    if file is None:
+        file = sys.stdout
+    file.write(f"{ANSI_DIM}[阶段]{ANSI_RESET} {ANSI_BOLD}{phase_label}{ANSI_RESET}\n")
+    file.flush()
+
+
+def print_summary_banner(
+    *,
+    report: dict[str, Any],
+    elapsed_seconds: int,
+    output_dir: str,
+    file=None,
+) -> None:
+    """Print the colored summary banner after backtest completes."""
+    if file is None:
+        file = sys.stdout
+    sep = "─" * RULE_WIDTH
+    file.write("\n" + sep + "\n")
+    file.write(
+        f"  {ANSI_GREEN_BOLD}✓ 回测完成{ANSI_RESET} ({elapsed_seconds} 秒)\n"
+    )
+    file.write(sep + "\n")
+
+    mode = report.get("mode", "?")
+    symbols = report.get("symbols") or []
+    symbols_str = ", ".join(symbols) if symbols else "N/A"
+    file.write(f"  模式:       {mode} ({symbols_str})\n")
+
+    pf = report.get("portfolio") or {}
+
+    def fmt_pct(v: Any) -> str:
+        if v is None:
+            return "N/A"
+        try:
+            return f"{float(v) * 100:+.2f}%"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    def fmt_num(v: Any) -> str:
+        if v is None:
+            return "N/A"
+        try:
+            return f"{float(v):.3f}"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    total_ret = fmt_pct(pf.get("total_return"))
+    sharpe = fmt_num(pf.get("sharpe"))
+    sortino = fmt_num(pf.get("sortino"))
+    pl_ratio = fmt_num(pf.get("profit_loss_ratio"))
+
+    file.write(
+        f"  总收益:     {ANSI_YELLOW_BOLD}{total_ret}{ANSI_RESET}   "
+        f"夏普: {ANSI_YELLOW_BOLD}{sharpe}{ANSI_RESET} "
+        f"索提诺: {ANSI_YELLOW_BOLD}{sortino}{ANSI_RESET}   "
+        f"盈亏比: {ANSI_YELLOW_BOLD}{pl_ratio}{ANSI_RESET}\n"
+    )
+    file.write(f"  资金曲线:   {output_dir}portfolio_equity.png\n")
+    file.write(f"  详细报告:   {output_dir}multi_factor_report.json\n")
+    file.write(sep + "\n\n")
+    file.flush()
