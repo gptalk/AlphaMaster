@@ -417,7 +417,7 @@ def _merge_settings(args: argparse.Namespace, settings: dict[str, Any]) -> dict[
 
 def build_cli_snapshot(symbol: str, timeframe: str) -> dict[str, Any]:
     """Build a training snapshot for the given (symbol, timeframe). Thin wrapper over web's build_training_snapshot."""
-    return build_training_snapshot(symbol=symbol, timeframe=timeframe)
+    return build_training_snapshot(symbol, timeframe)  # positional to match `assert_called_once_with("FAKE", "H1")` test
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
