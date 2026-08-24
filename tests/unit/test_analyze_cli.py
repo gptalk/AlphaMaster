@@ -61,3 +61,82 @@ def test_parse_args_help_exits() -> None:
     with pytest.raises(SystemExit) as exc_info:
         analyze_cli.parse_args(["--help"])
     assert exc_info.value.code == 0
+
+
+def test_merge_settings_cli_wins_over_settings() -> None:
+    args = argparse.Namespace(
+        provider="openclaw",
+        api_key="cli-key",
+        base_url="https://cli.example.com",
+        model="cli-model",
+    )
+    settings = {
+        "ai_provider": "deepseek",
+        "ai_api_key": "settings-key",
+        "ai_base_url": "https://settings.com",
+        "ai_model": "settings-model",
+    }
+    result = analyze_cli._merge_settings(args, settings)
+    assert result == {
+        "provider": "openclaw",
+        "api_key": "cli-key",
+        "base_url": "https://cli.example.com",
+        "model": "cli-model",
+    }
+
+
+def test_merge_settings_falls_back_to_settings() -> None:
+    args = argparse.Namespace(provider=None, api_key=None, base_url=None, model=None)
+    settings = {
+        "ai_provider": "openclaw_wb",
+        "ai_api_key": "settings-key",
+        "ai_base_url": "https://settings.com",
+        "ai_model": "settings-model",
+    }
+    result = analyze_cli._merge_settings(args, settings)
+    assert result == {
+        "provider": "openclaw_wb",
+        "api_key": "settings-key",
+        "base_url": "https://settings.com",
+        "model": "settings-model",
+    }
+
+
+def test_merge_settings_falls_back_to_defaults() -> None:
+    args = argparse.Namespace(provider=None, api_key=None, base_url=None, model=None)
+    settings = {}  # empty settings (no AI keys)
+    result = analyze_cli._merge_settings(args, settings)
+    assert result == {
+        "provider": "deepseek",
+        "api_key": "",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+    }
+
+
+def test_build_cli_snapshot_basic_shape() -> None:
+    """build_cli_snapshot should produce the same shape as web/ai_analyze.build_training_snapshot."""
+    fake_snapshot = {
+        "symbol": "FAKE",
+        "timeframe": "H1",
+        "data_file": None,
+        "training_active": False,
+        "job_state": None,
+        "current_step": 1000,
+        "train_steps": 5000,
+        "progress_pct": 20.0,
+        "status": "in_progress",
+        "best_score": 5.5,
+        "strategy_score": 5.5,
+        "has_strategy": False,
+        "formula": [1, 2, 3],
+        "formula_decoded": "alpha → close",
+        "checkpoint_path": None,
+        "training_curve": {"total_points": 0, "sampled": False, "points": 0, "series": {}},
+        "history_summary": {},
+    }
+    # monkeypatch the underlying web builder
+    with patch("analyze_cli.build_training_snapshot", return_value=fake_snapshot) as mock:
+        result = analyze_cli.build_cli_snapshot("FAKE", "H1")
+    assert result is fake_snapshot
+    mock.assert_called_once_with("FAKE", "H1")

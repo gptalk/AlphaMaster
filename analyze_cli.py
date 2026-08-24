@@ -92,3 +92,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"AI model name（默认从 web_settings.json 读，否则 {DEFAULT_MODEL}）",
     )
     return parser.parse_args(argv)
+
+
+def _merge_settings(args: argparse.Namespace, settings: dict[str, Any]) -> dict[str, str]:
+    """Merge CLI args with web_settings.json: CLI > settings > defaults."""
+    return {
+        "provider": args.provider or settings.get("ai_provider", "") or DEFAULT_PROVIDER,
+        "api_key": args.api_key or settings.get("ai_api_key", "") or "",
+        "base_url": args.base_url or settings.get("ai_base_url", "") or DEFAULT_BASE_URL,
+        "model": args.model or settings.get("ai_model", "") or DEFAULT_MODEL,
+    }
+
+
+def build_cli_snapshot(symbol: str, timeframe: str) -> dict[str, Any]:
+    """Build a training snapshot for the given (symbol, timeframe). Thin wrapper over web's build_training_snapshot."""
+    return build_training_snapshot(symbol, timeframe)
