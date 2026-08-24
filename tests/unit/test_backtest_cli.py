@@ -147,3 +147,11 @@ def test_detect_phase_picks_latest() -> None:
         "完成。\n"
     )
     assert backtest_cli.detect_backtest_phase(text) == "done"
+
+
+def test_detect_phase_compute_requires_brackets() -> None:
+    """'品种:' alone (without '[') should NOT trigger compute phase."""
+    # Mirrors web/backtest_manager.py regex: r"品种:\s*\["
+    assert backtest_cli.detect_backtest_phase("品种: 数据为空") != "compute"
+    # But with brackets (real report output) it should match
+    assert backtest_cli.detect_backtest_phase("品种: ['600519.SH']") == "compute"

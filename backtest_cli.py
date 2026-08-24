@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -133,7 +134,7 @@ def detect_backtest_phase(text: str) -> str:
         detected = "strategy"
     if "正在加载数据" in text:
         detected = "data"
-    if "品种:" in text or "多因子回测报告" in text:
+    if re.search(r"品种:\s*\[", text) or "多因子回测报告" in text:
         detected = "compute"
     if "生成 K 线图" in text or "张缩放图" in text:
         detected = "chart"
