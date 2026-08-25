@@ -1,19 +1,55 @@
 """
-model_core/features.py -- MT5 Feature Engineering (20 features)
+model_core/features.py -- MT5 Feature Engineering (65 features)
 
-Features:
-  Trend (0-4):   RET, RET5, RET20, MA_DIFF, SLOPE20
-  Volatility (5-8): ATR, RVOL, HL_RANGE, VOL_REGIME
-  Reversal (9-13):  DEV, DEV60, RSI14, PRESSURE, AC1
-  Volume (14-16):   VOL_RATIO, VOL_Z, PV_CORR
-  Cross-asset (17-19): REL_RET5, REL_RET20, REL_VOL
+Features (按 _FEATURE_DEFS 注册顺序，索引 = token/特征维位置):
+  Trend (0-4, 30-32):    RET, RET5, RET20, MA_DIFF, SLOPE20,
+                        EMA_RATIO_12_26, TREND_STRENGTH_50, PRICE_POS_50
+  Volatility (5-8, 21, 37-40): ATR, RVOL, HL_RANGE, VOL_REGIME, BOLL_WIDTH,
+                        GK_VOL, PARKINSON_VOL, YANG_ZHANG_VOL, RS_VOL
+  Reversal (9-13, 26-27, 33, 45-49): DEV, DEV60, RSI14, PRESSURE, AC1,
+                        WILLR_14, CCI_14, TYPICAL_DEV,
+                        STOCH_K_14, STOCH_D_3, AROON_OSC_25, DMI_ADX_14, DMI_DIFF_14
+  Volume (14-16, 20, 23-24, 41-44): VOL_RATIO, VOL_Z, PV_CORR,
+                        VWAP_DEV, OBV_SLOPE, MFI14,
+                        AMIHUD_ILLIQ, KYLE_LAMBDA, CMF_20, AD_LINE_SLOPE
+  Channel (21, 51-56):  BOLL_POS, DONCHIAN_POS_20, KELTNER_POS_20,
+                        ICHIMOKU_KIJUN_DEV, ICHIMOKU_TENKAN_DEV,
+                        SUPERTREND_DIR, SAR_DIST
+  Momentum (22, 28, 34-36, 50): MACD_HIST, ROC_12, TRIX_15, PPO,
+                        ULT_OSC, RET_ACCEL, TRIX_SIGNAL
+  Cross-sectional (17-19, 63-64): REL_RET5, REL_RET20, REL_VOL,
+                        CS_RANK_RET5, CS_ZSCORE_RET20
+  Statistical (57-62):  ROLL_SKEW_20, ROLL_KURT_20, HURST_50, FRACTAL_DIM_30,
+                        AC2, RET_ENTROPY_20
 
-Output: [N, 30, T], all normalized, no NaN/Inf. (v3.0: 20→30 features)
+Output: [N, F, T]（F 由 _FEATURE_REGISTRY 注册数决定，默认 65），all normalized,
+no NaN/Inf。每个特征经 _norm() 或 _clean() 兜底，warm-up 期填 0。
 
-注册化重构（task 5.1）：现有 30 个特征以 `FeatureSpec(name, category, compute)`
+历史扩展:
+  - 原始 20 特征（重构前）
+  - v3.0 扩展到 30（VWAP_DEV / BOLL_POS / BOLL_WIDTH / MACD_HIST / OBV_SLOPE /
+    MFI14 + WILLR_14 / CCI_14 / ROC_12 / TYPICAL_DEV）
+  - task 5.2 趋势/动量补全: +7 (EMA_RATIO_12_26, TREND_STRENGTH_50, PRICE_POS_50,
+    TRIX_15, PPO, ULT_OSC, RET_ACCEL)
+  - task 5.3 OHLC 波动率估计量: +4 (GK_VOL, PARKINSON_VOL, YANG_ZHANG_VOL, RS_VOL)
+  - task 5.4 量能/流动性: +4 (AMIHUD_ILLIQ, KYLE_LAMBDA, CMF_20, AD_LINE_SLOPE)
+  - task 5.5 反转/振荡: +6 (STOCH_K_14, STOCH_D_3, AROON_OSC_25,
+    DMI_ADX_14, DMI_DIFF_14, TRIX_SIGNAL)
+  - task 5.6 通道/突破: +6 (DONCHIAN_POS_20, KELTNER_POS_20, ICHIMOKU_KIJUN_DEV,
+    ICHIMOKU_TENKAN_DEV, SUPERTREND_DIR, SAR_DIST)
+  - task 5.7 统计: +6 (ROLL_SKEW_20, ROLL_KURT_20, HURST_50, FRACTAL_DIM_30,
+    AC2, RET_ENTROPY_20)
+  - task 5.8 截面补全: +2 (CS_RANK_RET5, CS_ZSCORE_RET20)  →  共 65
+
+注册化重构（task 5.1）：现有 65 个特征以 `FeatureSpec(name, category, compute)`
 声明条目注册进模块级 `FEATURE_REGISTRY`；`compute_features()` 按注册顺序执行
 每个特征的 compute 并堆叠为 [N, F, T]。计算逻辑与顺序与重构前逐元素一致。
 每个 compute 的签名为 `(raw_dict: dict) -> Tensor[N, T]`。
+
+特征剪枝：若项目根目录存在 `active_features.json`（由 prune_features.py 生成），
+则只注册白名单内的特征，缩小 vocab 与 RL 搜索空间；否则注册全部 65 个特征。
+白名单按 _FEATURE_DEFS 原始顺序过滤，保持特征维顺序稳定。
+`MT5FeatureEngineer.INPUT_DIM = len(FEATURE_REGISTRY.feature_names)` 自动同步。
 """
 import torch
 
