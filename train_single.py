@@ -1,8 +1,9 @@
 """
-train_single.py — 单品种训练入口
+train_single.py — 单品种训练入口（TDX parquet 版）
 
 用法:
-    python train_single.py XAUUSD [--offline]
+    python train_single.py 600519.SH
+    python train_single.py 600519.SH --parquet-root data/kline --period 1d
 
 每个品种独立训练，checkpoint: checkpoints/ckpt_{symbol}_step_{N}.pt
 训练完成后保存策略: strategies/best_{symbol}.json
@@ -13,16 +14,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config
-from data_pipeline.fetcher import MT5DataFetcher
-from data_pipeline.data_manager import MT5DataManager
+from data_pipeline.tdx_group_data_manager import TdxGroupDataManager
 from model_core.config import ModelConfig
 from model_core.engine import AlphaEngine
 
 
-def train_single(fetcher, symbol: str, offline: bool):
-    """训练单个品种。
+def train_single(symbol: str,
+                 parquet_root: Path = Path("data/kline"),
+                 period: str = "1d",
+                 max_steps: int | None = None):
+    """训练单个品种(纯离线读本地 parquet)。
 
     自动检测 checkpoint 续训，完成后保存策略到 strategies/best_{symbol}.json。
+
+    Args:
+        max_steps: 覆盖 ModelConfig.TRAIN_STEPS(烟测用, 默认 None = 用 model config)
     """
     import json, glob as _g
 
@@ -30,26 +36,24 @@ def train_single(fetcher, symbol: str, offline: bool):
     print(f"  AlphaGPT 单品种训练 — {symbol}")
     print(f"{'='*60}")
     print(f"  奖励模式: {ModelConfig.REWARD_MODE}")
-    print(f"  训练步数: {ModelConfig.TRAIN_STEPS}")
-    print(f"  K线目录: {Config.KLINE_CACHE_DIR}")
-    print(f"  离线模式: 是（仅读本地缓存）")
+    print(f"  训练步数: {max_steps or ModelConfig.TRAIN_STEPS}"
+          + (" (覆盖)" if max_steps else ""))
+    print(f"  parquet 目录: {parquet_root}")
+    print(f"  周期: {period}")
     print(f"{'='*60}")
 
-    # 加载全部品种数据，然后切出单品种视图
-    original = Config.SYMBOLS[:]
-    Config.SYMBOLS = [symbol]
-
+    mgr = TdxGroupDataManager(parquet_root=parquet_root, period=period)
     try:
-        mgr = MT5DataManager(fetcher)
-        mgr.load()
-        T = mgr.raw_dict["open"].shape[1]
-        print(f"  数据: {symbol}  T={T} bars ({T/6240:.2f}年)")
-    except Exception as e:
+        mgr.load([symbol])
+    except ValueError as e:
         print(f"  [错误] 数据加载失败: {e}")
-        Config.SYMBOLS = original
         return None
-    finally:
-        Config.SYMBOLS = original
+    if symbol not in mgr.symbols:
+        print(f"  [跳过] {symbol}: parquet 缺失或 bars < MIN_BARS")
+        return None
+
+    T = mgr.raw_dict["open"].shape[1]
+    print(f"  数据: {symbol}  T={T} bars ({T/244:.2f}年 日线 ≈ 244 bars/年)")
 
     engine = AlphaEngine(data_manager=mgr, target_symbol=symbol)
 
@@ -77,7 +81,7 @@ def train_single(fetcher, symbol: str, offline: bool):
     if start_step == 0:
         print(f"  [新训] 从 step 0 开始")
 
-    engine.train(start_step=start_step)
+    engine.train(start_step=start_step, end_step=max_steps)
     _save_strategy(engine, symbol)
     return engine
 
@@ -107,45 +111,30 @@ def _save_strategy(engine, symbol):
 
 # ── CLI ────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    offline = True
-    mode = "ftmo"
-    syms: list[str] = []
-    skip_next = False
-    for arg in sys.argv[1:]:
-        if skip_next:
-            skip_next = False
-            continue
-        if arg == "--mode":
-            skip_next = True
-            continue
-        if arg == "--cache-dir":
-            skip_next = True
-            continue
-        if arg.startswith("--"):
-            continue
-        syms.append(arg)
+    import argparse
 
-    if "--mode" in sys.argv:
-        idx = sys.argv.index("--mode")
-        mode = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else "ftmo"
-    if "--cache-dir" in sys.argv:
-        idx = sys.argv.index("--cache-dir")
-        if idx + 1 < len(sys.argv):
-            Config.KLINE_CACHE_DIR = sys.argv[idx + 1]
-    ModelConfig.REWARD_MODE = mode
+    p = argparse.ArgumentParser(
+        description="TDX 单品种训练(纯离线读 parquet)",
+    )
+    p.add_argument("symbol", help="股票代码, 如 600519.SH")
+    p.add_argument("--parquet-root", default="data/kline",
+                   help="parquet 根目录(默认 data/kline)")
+    p.add_argument("--period", default="1d", help="K 线周期(默认 1d)")
+    p.add_argument("--mode", default="ftmo", help="奖励模式(默认 ftmo)")
+    p.add_argument("--steps", type=int, default=None,
+                   help="覆盖 ModelConfig.TRAIN_STEPS(烟测用, 默认不覆盖)")
+    args = p.parse_args()
 
-    if not syms:
-        print("用法: python train_single.py <SYMBOL> [--cache-dir PATH] [--mode ftmo]")
-        print(f"可选品种: {Config.TRAINABLE_SYMBOLS}")
-        sys.exit(1)
-
-    symbol = syms[0]
+    ModelConfig.REWARD_MODE = args.mode
+    symbol = args.symbol
     if symbol not in Config.TRAINABLE_SYMBOLS:
         print(f"警告: {symbol} 不在 TRAINABLE_SYMBOLS 列表中，但仍将尝试训练")
 
     t0 = time.time()
-    with MT5DataFetcher(offline=offline) as fetcher:
-        eng = train_single(fetcher, symbol, offline)
+    eng = train_single(symbol,
+                       parquet_root=Path(args.parquet_root),
+                       period=args.period,
+                       max_steps=args.steps)
 
     elapsed = time.time() - t0
     if eng:
